@@ -1,0 +1,13 @@
+example/gen/
+example/.gotsx/
+*.log
+.tools/
+site/gen/
+site/.gotsx/
+site/public/tailwind.css
+shop/gen/
+shop/.gotsx/
+shop/public/tailwind.css
+admin/gen/
+admin/.gotsx/
+admin/public/tailwind.css

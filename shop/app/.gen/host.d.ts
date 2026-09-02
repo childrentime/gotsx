@@ -1,0 +1,145 @@
+// 由 gotsx 从 Go 宿主模块反射生成 —— 不要手改
+
+declare module "host:cart" {
+  export function add(arg0: string, arg1: string, arg2: string, arg3: number): CartView;
+  export function setQty(arg0: string, arg1: string, arg2: string, arg3: number): CartView;
+  export function view(arg0: string): CartView;
+}
+
+declare module "host:catalog" {
+  export function catLabel(arg0: string): string;
+  export function categories(): Category[];
+  export function feed(arg0: number): FeedResult;
+  export function flash(): Product[];
+  export function flashCards(): Card[];
+  export function flashLeftMs(): number;
+  export function get(arg0: string): Product;
+  export function list(arg0: string, arg1: string, arg2: string, arg3: number): Paged;
+  export function listCards(arg0: string, arg1: string, arg2: string, arg3: number): PagedCards;
+  export function productReviews(arg0: string): Review[];
+  export function related(arg0: string): Card[];
+}
+
+declare module "host:intl" {
+  export function fmtPrice(arg0: number): string;
+  export function fmtSold(arg0: number): string;
+}
+
+declare module "host:orders" {
+  export function get(arg0: string, arg1: string): Order;
+  export function list(arg0: string): Order[];
+  export function place(arg0: string, arg1: string, arg2: string, arg3: string): Order;
+}
+
+declare module "host:site" {
+  export function baseUrl(): string;
+  export function name(): string;
+  export function sitemapURLs(): string[];
+  export function url(arg0: string): string;
+}
+
+declare module "host:wish" {
+  export function list(arg0: string): string[];
+  export function toggle(arg0: string, arg1: string): boolean;
+}
+
+declare module "host:data" {
+  export interface CartView {
+    items: CartItem[];
+    count: number;
+    empty: boolean;
+    subtotalFmt: string;
+    shippingFmt: string;
+    totalFmt: string;
+    freeShip: boolean;
+    freeGapFmt: string;
+  }
+  export interface CartItem {
+    id: string;
+    title: string;
+    emoji: string;
+    hue: number;
+    variant: string;
+    qty: number;
+    priceFmt: string;
+    lineFmt: string;
+  }
+  export interface Category {
+    key: string;
+    label: string;
+    emoji: string;
+  }
+  export interface FeedResult {
+    cards: Card[];
+    hasMore: boolean;
+    page: number;
+  }
+  export interface Card {
+    id: string;
+    title: string;
+    emoji: string;
+    hue: number;
+    priceFmt: string;
+    origFmt: string;
+    off: number;
+    rating: number;
+    reviews: number;
+    soldFmt: string;
+    flash: boolean;
+    soldOut: boolean;
+    progress: number;
+    tag: string;
+  }
+  export interface Product {
+    id: string;
+    title: string;
+    emoji: string;
+    hue: number;
+    price: number;
+    orig: number;
+    sold: number;
+    rating: number;
+    reviews: number;
+    category: string;
+    stock: number;
+    flash: boolean;
+    desc: string;
+    variants: Variant[];
+    gallery: string[];
+  }
+  export interface Variant {
+    name: string;
+    options: string[];
+  }
+  export interface Paged {
+    items: Product[];
+    total: number;
+    page: number;
+    pages: number;
+    pageList: number[];
+  }
+  export interface PagedCards {
+    items: Card[];
+    total: number;
+    page: number;
+    pages: number;
+    pageList: number[];
+  }
+  export interface Review {
+    user: string;
+    stars: number;
+    text: string;
+    date: string;
+  }
+  export interface Order {
+    id: string;
+    items: CartItem[];
+    count: number;
+    totalFmt: string;
+    name: string;
+    phone: string;
+    address: string;
+    createdFmt: string;
+    status: string;
+  }
+}

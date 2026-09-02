@@ -1,0 +1,18 @@
+// 由 gotsx 从 Go 宿主模块反射生成 —— 不要手改
+
+declare module "host:hl" {
+  export function tokens(arg0: string, arg1: string): Token[];
+}
+
+declare module "host:site" {
+  export function goVersion(): string;
+  export function now(): string;
+  export function version(): string;
+}
+
+declare module "host:data" {
+  export interface Token {
+    kind: string;
+    text: string;
+  }
+}

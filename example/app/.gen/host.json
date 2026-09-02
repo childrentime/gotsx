@@ -1,0 +1,163 @@
+{
+  "modules": {
+    "data": {
+      "go": "host.Data",
+      "members": {
+        "models": {
+          "kind": "field",
+          "go": "Models",
+          "type": "ModelStore"
+        }
+      }
+    },
+    "intl": {
+      "go": "host.Intl",
+      "members": {
+        "fmtDate": {
+          "kind": "method",
+          "go": "FmtDate",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "fmtNumber": {
+          "kind": "method",
+          "go": "FmtNumber",
+          "params": [
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "now": {
+          "kind": "method",
+          "go": "Now",
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        }
+      }
+    }
+  },
+  "types": {
+    "Model": {
+      "go": "host.Model",
+      "fields": [
+        {
+          "name": "id",
+          "go": "ID",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "title",
+          "go": "Title",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "author",
+          "go": "Author",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "desc",
+          "go": "Desc",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "likes",
+          "go": "Likes",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "tags",
+          "go": "Tags",
+          "type": "string[]",
+          "gotype": "[]string"
+        },
+        {
+          "name": "createdAt",
+          "go": "CreatedAt",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "ModelStore": {
+      "go": "host.ModelStore",
+      "fields": null,
+      "methods": {
+        "get": {
+          "kind": "method",
+          "go": "Get",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Model",
+            "go": "host.Model"
+          },
+          "throws": true
+        },
+        "like": {
+          "kind": "method",
+          "go": "Like",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "number",
+            "go": "int"
+          },
+          "throws": true
+        },
+        "list": {
+          "kind": "method",
+          "go": "List",
+          "ret": {
+            "type": "Model[]",
+            "go": "[]host.Model"
+          }
+        },
+        "search": {
+          "kind": "method",
+          "go": "Search",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Model[]",
+            "go": "[]host.Model"
+          }
+        }
+      }
+    }
+  }
+}

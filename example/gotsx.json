@@ -1,0 +1,4 @@
+{
+  "module": "gotsx/example",
+  "hostPackage": "gotsx/example/host"
+}

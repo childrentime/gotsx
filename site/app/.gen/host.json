@@ -1,0 +1,76 @@
+{
+  "modules": {
+    "hl": {
+      "go": "host.Hl",
+      "members": {
+        "tokens": {
+          "kind": "method",
+          "go": "Tokens",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Token[]",
+            "go": "[]host.Token"
+          }
+        }
+      }
+    },
+    "site": {
+      "go": "host.Site",
+      "members": {
+        "goVersion": {
+          "kind": "method",
+          "go": "GoVersion",
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "now": {
+          "kind": "method",
+          "go": "Now",
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "version": {
+          "kind": "method",
+          "go": "Version",
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        }
+      }
+    }
+  },
+  "types": {
+    "Token": {
+      "go": "host.Token",
+      "fields": [
+        {
+          "name": "kind",
+          "go": "Kind",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "text",
+          "go": "Text",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    }
+  }
+}

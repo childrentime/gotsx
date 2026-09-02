@@ -1,0 +1,62 @@
+// 由 gotsx 从 Go 宿主模块反射生成 —— 不要手改
+
+declare module "host:auth" {
+  export function current(arg0: string): Session;
+  export function isAuthed(arg0: string): boolean;
+  export function login(arg0: string, arg1: string): string;
+  export function logout(arg0: string): void;
+}
+
+declare module "host:stats" {
+  export function cards(): Stat[];
+  export function recent(): Activity[];
+}
+
+declare module "host:users" {
+  export function all(): UserPage;
+  export function create(arg0: string, arg1: string, arg2: string, arg3: string): User;
+  export function delete(arg0: string): boolean;
+  export function get(arg0: string): User;
+  export function query(arg0: string, arg1: string, arg2: string, arg3: number): UserPage;
+  export function update(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string): User;
+}
+
+declare module "host:data" {
+  export interface Session {
+    user: string;
+    name: string;
+    role: string;
+  }
+  export interface Stat {
+    label: string;
+    value: string;
+    delta: string;
+    up: boolean;
+    icon: string;
+  }
+  export interface Activity {
+    who: string;
+    what: string;
+    when: string;
+    icon: string;
+  }
+  export interface UserPage {
+    items: User[];
+    total: number;
+    page: number;
+    pages: number;
+    pageList: number[];
+    active: number;
+    admins: number;
+  }
+  export interface User {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    status: string;
+    dept: string;
+    created: string;
+    lastSeen: string;
+  }
+}

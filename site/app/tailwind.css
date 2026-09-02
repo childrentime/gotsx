@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --color-brand-50: #eef6ff;
+  --color-brand-100: #d9ebff;
+  --color-brand-200: #b9d9ff;
+  --color-brand-300: #86bdff;
+  --color-brand-400: #4c98ff;
+  --color-brand-500: #2372f5;
+  --color-brand-600: #1557d6;
+  --color-brand-700: #1345ad;
+  --color-brand-800: #153c8a;
+  --color-brand-900: #16346d;
+}
+
+html { scroll-behavior: smooth; }
+::selection { background: var(--color-brand-200); }
+.dark ::selection { background: var(--color-brand-800); }

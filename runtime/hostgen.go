@@ -1,0 +1,217 @@
+package gotsx
+
+// 宿主模块 → host.d.ts(给编辑器) + host.json(给编译器)。两者都由 Go 反射生成, TSX 能看到的 = Go 暴露的。
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"sort"
+	"strings"
+	"time"
+)
+
+type HostModule struct {
+	Value any    // 模块值(结构体指针或值)
+	Go    string // 生成代码里引用它的 Go 表达式, 如 "host.Data"
+}
+
+type HostJSON struct {
+	Modules map[string]*HostModJSON  `json:"modules"`
+	Types   map[string]*HostTypeJSON `json:"types"`
+}
+type HostModJSON struct {
+	Go      string                     `json:"go"`
+	Members map[string]*HostMemberJSON `json:"members"`
+}
+type HostMemberJSON struct {
+	Kind   string          `json:"kind"` // field | method
+	Go     string          `json:"go"`
+	Type   string          `json:"type,omitempty"` // field 的 TS 类型
+	Params []HostParamJSON `json:"params,omitempty"`
+	Ret    *HostParamJSON  `json:"ret,omitempty"`
+	Throws bool            `json:"throws,omitempty"`
+}
+type HostParamJSON struct {
+	Type string `json:"type"` // TS 类型
+	Go   string `json:"go"`   // Go 类型(用于数字转换)
+}
+type HostTypeJSON struct {
+	Go      string                     `json:"go"`
+	Fields  []HostFieldJSON            `json:"fields"`
+	Methods map[string]*HostMemberJSON `json:"methods"`
+}
+type HostFieldJSON struct {
+	Name   string `json:"name"`
+	Go     string `json:"go"`
+	Type   string `json:"type"`
+	GoType string `json:"gotype,omitempty"`
+}
+
+type hostGen struct {
+	pkg   string // Go 包别名, 如 "host"
+	types map[string]*HostTypeJSON
+	order []string
+}
+
+// GenerateHost 返回 (host.d.ts, host.json)
+func GenerateHost(reg map[string]HostModule, pkgAlias string) (string, string) {
+	g := &hostGen{pkg: pkgAlias, types: map[string]*HostTypeJSON{}}
+	out := &HostJSON{Modules: map[string]*HostModJSON{}, Types: g.types}
+	names := make([]string, 0, len(reg))
+	for n := range reg {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var dts strings.Builder
+	dts.WriteString("// 由 gotsx 从 Go 宿主模块反射生成 —— 不要手改\n\n")
+	for _, name := range names {
+		m := reg[name]
+		mj := &HostModJSON{Go: m.Go, Members: map[string]*HostMemberJSON{}}
+		t := reflect.TypeOf(m.Value)
+		fmt.Fprintf(&dts, "declare module \"host:%s\" {\n", name)
+		for i := 0; i < t.NumMethod(); i++ {
+			meth := t.Method(i)
+			mem := g.method(meth.Type, meth.Name)
+			mj.Members[lcFirst(meth.Name)] = mem
+			fmt.Fprintf(&dts, "  export function %s%s;\n", lcFirst(meth.Name), g.sig(mem))
+		}
+		st := t
+		if st.Kind() == reflect.Pointer {
+			st = st.Elem()
+		}
+		if st.Kind() == reflect.Struct {
+			for i := 0; i < st.NumField(); i++ {
+				f := st.Field(i)
+				if jn := jsonName(f); jn != "" {
+					ts := g.ts(f.Type)
+					mj.Members[jn] = &HostMemberJSON{Kind: "field", Go: f.Name, Type: ts}
+					fmt.Fprintf(&dts, "  export const %s: %s;\n", jn, ts)
+				}
+			}
+		}
+		out.Modules[name] = mj
+		dts.WriteString("}\n\n")
+	}
+	// 类型声明放进各模块都能看到的全局 declare
+	if len(g.order) > 0 {
+		dts.WriteString("declare module \"host:data\" {\n") // 类型统一挂在 host:data 下导出
+		for _, n := range g.order {
+			tj := g.types[n]
+			fmt.Fprintf(&dts, "  export interface %s {\n", n)
+			for _, f := range tj.Fields {
+				fmt.Fprintf(&dts, "    %s: %s;\n", f.Name, f.Type)
+			}
+			mnames := make([]string, 0, len(tj.Methods))
+			for mn := range tj.Methods {
+				mnames = append(mnames, mn)
+			}
+			sort.Strings(mnames)
+			for _, mn := range mnames {
+				fmt.Fprintf(&dts, "    %s%s;\n", mn, g.sig(tj.Methods[mn]))
+			}
+			dts.WriteString("  }\n")
+		}
+		dts.WriteString("}\n")
+	}
+	b, _ := json.MarshalIndent(out, "", "  ")
+	return dts.String(), string(b)
+}
+
+func (g *hostGen) sig(m *HostMemberJSON) string {
+	var ps []string
+	for i, p := range m.Params {
+		ps = append(ps, fmt.Sprintf("arg%d: %s", i, p.Type))
+	}
+	ret := "void"
+	if m.Ret != nil {
+		ret = m.Ret.Type
+	}
+	return "(" + strings.Join(ps, ", ") + "): " + ret
+}
+
+var errT = reflect.TypeOf((*error)(nil)).Elem()
+
+func (g *hostGen) method(ft reflect.Type, goName string) *HostMemberJSON {
+	m := &HostMemberJSON{Kind: "method", Go: goName}
+	for i := 1; i < ft.NumIn(); i++ {
+		m.Params = append(m.Params, HostParamJSON{Type: g.ts(ft.In(i)), Go: ft.In(i).String()})
+	}
+	n := ft.NumOut()
+	if n >= 1 && ft.Out(n-1) == errT {
+		m.Throws = true
+		n--
+	}
+	if n >= 1 {
+		m.Ret = &HostParamJSON{Type: g.ts(ft.Out(0)), Go: ft.Out(0).String()}
+	}
+	return m
+}
+
+func (g *hostGen) ts(t reflect.Type) string {
+	switch t.Kind() {
+	case reflect.String:
+		return "string"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return "number"
+	case reflect.Bool:
+		return "boolean"
+	case reflect.Slice, reflect.Array:
+		return g.ts(t.Elem()) + "[]"
+	case reflect.Map:
+		return "Record<string, " + g.ts(t.Elem()) + ">"
+	case reflect.Pointer:
+		return g.ts(t.Elem())
+	case reflect.Interface:
+		return "unknown"
+	case reflect.Struct:
+		if t == reflect.TypeOf(time.Time{}) {
+			return "string"
+		}
+		name := t.Name()
+		if _, ok := g.types[name]; !ok {
+			tj := &HostTypeJSON{Go: g.pkg + "." + name, Methods: map[string]*HostMemberJSON{}}
+			g.types[name] = tj
+			g.order = append(g.order, name)
+			for i := 0; i < t.NumField(); i++ {
+				f := t.Field(i)
+				if jn := jsonName(f); jn != "" {
+					tj.Fields = append(tj.Fields, HostFieldJSON{Name: jn, Go: f.Name, Type: g.ts(f.Type), GoType: f.Type.String()})
+				}
+			}
+			pt := reflect.PointerTo(t)
+			for i := 0; i < pt.NumMethod(); i++ {
+				meth := pt.Method(i)
+				tj.Methods[lcFirst(meth.Name)] = g.method(meth.Type, meth.Name)
+			}
+		}
+		return name
+	}
+	return "unknown"
+}
+
+func jsonName(f reflect.StructField) string {
+	if !f.IsExported() {
+		return ""
+	}
+	tag := f.Tag.Get("json")
+	if tag == "-" {
+		return ""
+	}
+	if i := strings.Index(tag, ","); i >= 0 {
+		tag = tag[:i]
+	}
+	if tag == "" {
+		return f.Name
+	}
+	return tag
+}
+
+func lcFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
+}

@@ -1,0 +1,938 @@
+{
+  "modules": {
+    "cart": {
+      "go": "host.Cart",
+      "members": {
+        "add": {
+          "kind": "method",
+          "go": "Add",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "CartView",
+            "go": "host.CartView"
+          },
+          "throws": true
+        },
+        "setQty": {
+          "kind": "method",
+          "go": "SetQty",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "CartView",
+            "go": "host.CartView"
+          }
+        },
+        "view": {
+          "kind": "method",
+          "go": "View",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "CartView",
+            "go": "host.CartView"
+          }
+        }
+      }
+    },
+    "catalog": {
+      "go": "host.Catalog",
+      "members": {
+        "catLabel": {
+          "kind": "method",
+          "go": "CatLabel",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "categories": {
+          "kind": "method",
+          "go": "Categories",
+          "ret": {
+            "type": "Category[]",
+            "go": "[]host.Category"
+          }
+        },
+        "feed": {
+          "kind": "method",
+          "go": "Feed",
+          "params": [
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "FeedResult",
+            "go": "host.FeedResult"
+          }
+        },
+        "flash": {
+          "kind": "method",
+          "go": "Flash",
+          "ret": {
+            "type": "Product[]",
+            "go": "[]host.Product"
+          }
+        },
+        "flashCards": {
+          "kind": "method",
+          "go": "FlashCards",
+          "ret": {
+            "type": "Card[]",
+            "go": "[]host.Card"
+          }
+        },
+        "flashLeftMs": {
+          "kind": "method",
+          "go": "FlashLeftMs",
+          "ret": {
+            "type": "number",
+            "go": "int"
+          }
+        },
+        "get": {
+          "kind": "method",
+          "go": "Get",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Product",
+            "go": "host.Product"
+          },
+          "throws": true
+        },
+        "list": {
+          "kind": "method",
+          "go": "List",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "Paged",
+            "go": "host.Paged"
+          }
+        },
+        "listCards": {
+          "kind": "method",
+          "go": "ListCards",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "PagedCards",
+            "go": "host.PagedCards"
+          }
+        },
+        "productReviews": {
+          "kind": "method",
+          "go": "ProductReviews",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Review[]",
+            "go": "[]host.Review"
+          }
+        },
+        "related": {
+          "kind": "method",
+          "go": "Related",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Card[]",
+            "go": "[]host.Card"
+          }
+        }
+      }
+    },
+    "intl": {
+      "go": "host.Intl",
+      "members": {
+        "fmtPrice": {
+          "kind": "method",
+          "go": "FmtPrice",
+          "params": [
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "fmtSold": {
+          "kind": "method",
+          "go": "FmtSold",
+          "params": [
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        }
+      }
+    },
+    "orders": {
+      "go": "host.Orders",
+      "members": {
+        "get": {
+          "kind": "method",
+          "go": "Get",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Order",
+            "go": "host.Order"
+          },
+          "throws": true
+        },
+        "list": {
+          "kind": "method",
+          "go": "List",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Order[]",
+            "go": "[]host.Order"
+          }
+        },
+        "place": {
+          "kind": "method",
+          "go": "Place",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Order",
+            "go": "host.Order"
+          },
+          "throws": true
+        }
+      }
+    },
+    "site": {
+      "go": "host.Site",
+      "members": {
+        "baseUrl": {
+          "kind": "method",
+          "go": "BaseUrl",
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "name": {
+          "kind": "method",
+          "go": "Name",
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        },
+        "sitemapURLs": {
+          "kind": "method",
+          "go": "SitemapURLs",
+          "ret": {
+            "type": "string[]",
+            "go": "[]string"
+          }
+        },
+        "url": {
+          "kind": "method",
+          "go": "Url",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "string",
+            "go": "string"
+          }
+        }
+      }
+    },
+    "wish": {
+      "go": "host.Wish",
+      "members": {
+        "list": {
+          "kind": "method",
+          "go": "List",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "string[]",
+            "go": "[]string"
+          }
+        },
+        "toggle": {
+          "kind": "method",
+          "go": "Toggle",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "boolean",
+            "go": "bool"
+          }
+        }
+      }
+    }
+  },
+  "types": {
+    "Card": {
+      "go": "host.Card",
+      "fields": [
+        {
+          "name": "id",
+          "go": "ID",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "title",
+          "go": "Title",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "emoji",
+          "go": "Emoji",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "hue",
+          "go": "Hue",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "priceFmt",
+          "go": "PriceFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "origFmt",
+          "go": "OrigFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "off",
+          "go": "Off",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "rating",
+          "go": "Rating",
+          "type": "number",
+          "gotype": "float64"
+        },
+        {
+          "name": "reviews",
+          "go": "Reviews",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "soldFmt",
+          "go": "SoldFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "flash",
+          "go": "Flash",
+          "type": "boolean",
+          "gotype": "bool"
+        },
+        {
+          "name": "soldOut",
+          "go": "SoldOut",
+          "type": "boolean",
+          "gotype": "bool"
+        },
+        {
+          "name": "progress",
+          "go": "Progress",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "tag",
+          "go": "Tag",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "CartItem": {
+      "go": "host.CartItem",
+      "fields": [
+        {
+          "name": "id",
+          "go": "ID",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "title",
+          "go": "Title",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "emoji",
+          "go": "Emoji",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "hue",
+          "go": "Hue",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "variant",
+          "go": "Variant",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "qty",
+          "go": "Qty",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "priceFmt",
+          "go": "PriceFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "lineFmt",
+          "go": "LineFmt",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "CartView": {
+      "go": "host.CartView",
+      "fields": [
+        {
+          "name": "items",
+          "go": "Items",
+          "type": "CartItem[]",
+          "gotype": "[]host.CartItem"
+        },
+        {
+          "name": "count",
+          "go": "Count",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "empty",
+          "go": "Empty",
+          "type": "boolean",
+          "gotype": "bool"
+        },
+        {
+          "name": "subtotalFmt",
+          "go": "SubtotalFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "shippingFmt",
+          "go": "ShippingFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "totalFmt",
+          "go": "TotalFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "freeShip",
+          "go": "FreeShip",
+          "type": "boolean",
+          "gotype": "bool"
+        },
+        {
+          "name": "freeGapFmt",
+          "go": "FreeGapFmt",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "Category": {
+      "go": "host.Category",
+      "fields": [
+        {
+          "name": "key",
+          "go": "Key",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "label",
+          "go": "Label",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "emoji",
+          "go": "Emoji",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "FeedResult": {
+      "go": "host.FeedResult",
+      "fields": [
+        {
+          "name": "cards",
+          "go": "Cards",
+          "type": "Card[]",
+          "gotype": "[]host.Card"
+        },
+        {
+          "name": "hasMore",
+          "go": "HasMore",
+          "type": "boolean",
+          "gotype": "bool"
+        },
+        {
+          "name": "page",
+          "go": "Page",
+          "type": "number",
+          "gotype": "int"
+        }
+      ],
+      "methods": {}
+    },
+    "Order": {
+      "go": "host.Order",
+      "fields": [
+        {
+          "name": "id",
+          "go": "ID",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "items",
+          "go": "Items",
+          "type": "CartItem[]",
+          "gotype": "[]host.CartItem"
+        },
+        {
+          "name": "count",
+          "go": "Count",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "totalFmt",
+          "go": "TotalFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "name",
+          "go": "Name",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "phone",
+          "go": "Phone",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "address",
+          "go": "Address",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "createdFmt",
+          "go": "CreatedFmt",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "status",
+          "go": "Status",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "Paged": {
+      "go": "host.Paged",
+      "fields": [
+        {
+          "name": "items",
+          "go": "Items",
+          "type": "Product[]",
+          "gotype": "[]host.Product"
+        },
+        {
+          "name": "total",
+          "go": "Total",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "page",
+          "go": "Page",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "pages",
+          "go": "Pages",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "pageList",
+          "go": "PageList",
+          "type": "number[]",
+          "gotype": "[]int"
+        }
+      ],
+      "methods": {}
+    },
+    "PagedCards": {
+      "go": "host.PagedCards",
+      "fields": [
+        {
+          "name": "items",
+          "go": "Items",
+          "type": "Card[]",
+          "gotype": "[]host.Card"
+        },
+        {
+          "name": "total",
+          "go": "Total",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "page",
+          "go": "Page",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "pages",
+          "go": "Pages",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "pageList",
+          "go": "PageList",
+          "type": "number[]",
+          "gotype": "[]int"
+        }
+      ],
+      "methods": {}
+    },
+    "Product": {
+      "go": "host.Product",
+      "fields": [
+        {
+          "name": "id",
+          "go": "ID",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "title",
+          "go": "Title",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "emoji",
+          "go": "Emoji",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "hue",
+          "go": "Hue",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "price",
+          "go": "Price",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "orig",
+          "go": "Orig",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "sold",
+          "go": "Sold",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "rating",
+          "go": "Rating",
+          "type": "number",
+          "gotype": "float64"
+        },
+        {
+          "name": "reviews",
+          "go": "Reviews",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "category",
+          "go": "Category",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "stock",
+          "go": "Stock",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "flash",
+          "go": "Flash",
+          "type": "boolean",
+          "gotype": "bool"
+        },
+        {
+          "name": "desc",
+          "go": "Desc",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "variants",
+          "go": "Variants",
+          "type": "Variant[]",
+          "gotype": "[]host.Variant"
+        },
+        {
+          "name": "gallery",
+          "go": "Gallery",
+          "type": "string[]",
+          "gotype": "[]string"
+        }
+      ],
+      "methods": {}
+    },
+    "Review": {
+      "go": "host.Review",
+      "fields": [
+        {
+          "name": "user",
+          "go": "User",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "stars",
+          "go": "Stars",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "text",
+          "go": "Text",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "date",
+          "go": "Date",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "Variant": {
+      "go": "host.Variant",
+      "fields": [
+        {
+          "name": "name",
+          "go": "Name",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "options",
+          "go": "Options",
+          "type": "string[]",
+          "gotype": "[]string"
+        }
+      ],
+      "methods": {}
+    }
+  }
+}

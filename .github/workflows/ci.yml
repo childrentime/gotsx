@@ -1,0 +1,23 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 下载 Tailwind
+        run: ./scripts/get-tailwind.sh
+      - name: 编译示例应用的方言 (gen 必须先于 build/test)
+        run: make gen
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test ./... -count=1
+      - name: go vet
+        run: make lint

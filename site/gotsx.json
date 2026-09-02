@@ -1,0 +1,4 @@
+{
+  "module": "gotsx/site",
+  "hostPackage": "gotsx/site/host"
+}

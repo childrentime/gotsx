@@ -1,0 +1,409 @@
+{
+  "modules": {
+    "auth": {
+      "go": "host.Auth",
+      "members": {
+        "current": {
+          "kind": "method",
+          "go": "Current",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "Session",
+            "go": "host.Session"
+          }
+        },
+        "isAuthed": {
+          "kind": "method",
+          "go": "IsAuthed",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "boolean",
+            "go": "bool"
+          }
+        },
+        "login": {
+          "kind": "method",
+          "go": "Login",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "string",
+            "go": "string"
+          },
+          "throws": true
+        },
+        "logout": {
+          "kind": "method",
+          "go": "Logout",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ]
+        }
+      }
+    },
+    "stats": {
+      "go": "host.Stats",
+      "members": {
+        "cards": {
+          "kind": "method",
+          "go": "Cards",
+          "ret": {
+            "type": "Stat[]",
+            "go": "[]host.Stat"
+          }
+        },
+        "recent": {
+          "kind": "method",
+          "go": "Recent",
+          "ret": {
+            "type": "Activity[]",
+            "go": "[]host.Activity"
+          }
+        }
+      }
+    },
+    "users": {
+      "go": "host.Users",
+      "members": {
+        "all": {
+          "kind": "method",
+          "go": "All",
+          "ret": {
+            "type": "UserPage",
+            "go": "host.UserPage"
+          }
+        },
+        "create": {
+          "kind": "method",
+          "go": "Create",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "User",
+            "go": "host.User"
+          }
+        },
+        "delete": {
+          "kind": "method",
+          "go": "Delete",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "boolean",
+            "go": "bool"
+          }
+        },
+        "get": {
+          "kind": "method",
+          "go": "Get",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "User",
+            "go": "host.User"
+          },
+          "throws": true
+        },
+        "query": {
+          "kind": "method",
+          "go": "Query",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "number",
+              "go": "int"
+            }
+          ],
+          "ret": {
+            "type": "UserPage",
+            "go": "host.UserPage"
+          }
+        },
+        "update": {
+          "kind": "method",
+          "go": "Update",
+          "params": [
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            },
+            {
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "User",
+            "go": "host.User"
+          }
+        }
+      }
+    }
+  },
+  "types": {
+    "Activity": {
+      "go": "host.Activity",
+      "fields": [
+        {
+          "name": "who",
+          "go": "Who",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "what",
+          "go": "What",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "when",
+          "go": "When",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "icon",
+          "go": "Icon",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "Session": {
+      "go": "host.Session",
+      "fields": [
+        {
+          "name": "user",
+          "go": "User",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "name",
+          "go": "Name",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "role",
+          "go": "Role",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "Stat": {
+      "go": "host.Stat",
+      "fields": [
+        {
+          "name": "label",
+          "go": "Label",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "value",
+          "go": "Value",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "delta",
+          "go": "Delta",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "up",
+          "go": "Up",
+          "type": "boolean",
+          "gotype": "bool"
+        },
+        {
+          "name": "icon",
+          "go": "Icon",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "User": {
+      "go": "host.User",
+      "fields": [
+        {
+          "name": "id",
+          "go": "ID",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "name",
+          "go": "Name",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "email",
+          "go": "Email",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "role",
+          "go": "Role",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "status",
+          "go": "Status",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "dept",
+          "go": "Dept",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "created",
+          "go": "Created",
+          "type": "string",
+          "gotype": "string"
+        },
+        {
+          "name": "lastSeen",
+          "go": "LastSeen",
+          "type": "string",
+          "gotype": "string"
+        }
+      ],
+      "methods": {}
+    },
+    "UserPage": {
+      "go": "host.UserPage",
+      "fields": [
+        {
+          "name": "items",
+          "go": "Items",
+          "type": "User[]",
+          "gotype": "[]host.User"
+        },
+        {
+          "name": "total",
+          "go": "Total",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "page",
+          "go": "Page",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "pages",
+          "go": "Pages",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "pageList",
+          "go": "PageList",
+          "type": "number[]",
+          "gotype": "[]int"
+        },
+        {
+          "name": "active",
+          "go": "Active",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "admins",
+          "go": "Admins",
+          "type": "number",
+          "gotype": "int"
+        }
+      ],
+      "methods": {}
+    }
+  }
+}
