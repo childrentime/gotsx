@@ -21,6 +21,7 @@ func main() {
 	log.Fatal(gotsx.Serve(gotsx.Options{
 		Addr:      *addr,
 		Dev:       *dev,
+		I18n:      &gotsx.I18n{Locales: []string{"en", "zh"}, Default: "en", Prefix: true},
 		Routes:    gen.Routes,
 		ClientDir: gotsx.FindDir("gen/client"),
 		ClientFS:  gen.ClientFS,

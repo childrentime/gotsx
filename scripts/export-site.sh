@@ -6,7 +6,8 @@ cd "$(dirname "$0")/.."
 BASE="${BASE:-/gotsx}"
 PORT="${PORT:-4123}"
 OUT="dist"
-ROUTES=("/" "/docs" "/docs/language" "/docs/components" "/docs/architecture")
+ROUTES=("/" "/docs" "/docs/language" "/docs/components" "/docs/architecture" \
+        "/zh" "/zh/docs" "/zh/docs/language" "/zh/docs/components" "/zh/docs/architecture")
 
 echo ">> build site"
 [ -x .tools/tailwindcss ] || ./scripts/get-tailwind.sh

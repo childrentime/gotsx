@@ -4,18 +4,23 @@ import { Idiomorph } from "./idiomorph.esm.js";
 
 const manifest = () => (window.__GOTSX && window.__GOTSX.islands) || {};
 
-/* i18n 前缀模式: 把内链自动补上当前语言前缀(默认语言不补), 保持同语言导航 */
+/* i18n 前缀模式: 把内链自动补上当前语言前缀(默认语言不补), 保持同语言导航。base-aware(静态导出到子路径时) */
 function localize(url) {
-  const i = (window.__GOTSX && window.__GOTSX.i18n) || {};
+  const g = window.__GOTSX || {};
+  const i = g.i18n || {};
   if (!i.prefix || !i.locale || i.locale === i.default) return url;
   let u;
   try { u = new URL(url, location.origin); } catch { return url; }
   if (u.origin !== location.origin) return url;
-  const p = u.pathname;
+  const base = g.base || "";
+  let p = u.pathname;
+  const underBase = base !== "" && (p === base || p.startsWith(base + "/"));
+  if (underBase) p = p.slice(base.length) || "/";
   if (p === "/" + i.locale || p.startsWith("/" + i.locale + "/")) return url;   // 已带前缀
   for (const skip of ["/_gotsx", "/api", "/actions", "/public", "/img", "/robots", "/sitemap", "/manifest", "/icon", "/healthz", "/readyz"])
     if (p.startsWith(skip)) return url;
-  u.pathname = "/" + i.locale + (p === "/" ? "" : p);
+  p = "/" + i.locale + (p === "/" ? "" : p);
+  u.pathname = (underBase ? base : "") + p;
   return u.href;
 }
 const mods = new Map();
