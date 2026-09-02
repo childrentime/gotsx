@@ -1,5 +1,6 @@
 import { useState, emit } from "gotsx";
 import type { Variant } from "host:catalog";
+import { add } from "host:cart";                 // typed action: CartModule.Add over a same-origin POST
 import Icon from "../ui/Icon";
 
 export default function AddToCart({ id, variants, stock, locale = "" }: { id: string; variants: Variant[]; stock: number; locale?: string }) {
@@ -10,7 +11,7 @@ export default function AddToCart({ id, variants, stock, locale = "" }: { id: st
   const [good, setGood] = useState(false);
   const pick = (i: number, opt: string) => setSel(variants.map((v, j) => (j === i ? opt : sel[j] ?? "")));
   const chosen = sel.filter((x) => x !== "").length;
-  const add = async () => {
+  const onAdd = async () => {
     if (chosen !== variants.length) {
       setGood(false);
       setMsg(t(locale, "add.pick"));
@@ -18,16 +19,16 @@ export default function AddToCart({ id, variants, stock, locale = "" }: { id: st
     }
     setBusy(true);
     setMsg("");
-    const r = await fetch("/actions/cart/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, variant: sel.join(" / "), qty }) });
-    const d = await r.json();
-    setBusy(false);
-    if (d.ok) {
+    try {
+      const cv = await add(id, sel.join(" / "), qty);   // Promise<CartView>, typed from Go
       setGood(true);
       setMsg(t(locale, "add.added"));
-      emit("cart:changed", { count: d.cart.count });
-    } else {
+      emit("cart:changed", { count: cv.count });
+    } catch (e) {
       setGood(false);
-      setMsg(d.error);
+      setMsg(e.message);                                // gotsx.Fail("Only N left in stock") → 400 with the message
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -52,7 +53,7 @@ export default function AddToCart({ id, variants, stock, locale = "" }: { id: st
         <span class="text-xs text-muted-foreground tabular-nums">{tv(locale, "add.stock", { n: String(stock) })}</span>
       </div>
       <div class="flex flex-wrap items-center gap-3 pt-1">
-        <button class="btn btn-primary btn-lg min-w-44" disabled={busy || stock === 0} onClick={add}>
+        <button class="btn btn-primary btn-lg min-w-44" disabled={busy || stock === 0} onClick={onAdd}>
           {busy ? <Icon name="loader" className="animate-spin" /> : <Icon name="cart" />}
           {stock === 0 ? t(locale, "add.soldout") : busy ? t(locale, "add.adding") : t(locale, "add.button")}
         </button>

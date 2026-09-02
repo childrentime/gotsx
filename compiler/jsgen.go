@@ -316,6 +316,9 @@ func (g *jsGen) expr(e Expr) string {
 		if x.Sym != nil && (x.Sym.Kind == SSignal || x.Sym.Kind == SMemo) {
 			return x.Name + "()"
 		}
+		if x.Sym != nil && x.Sym.Kind == SHostMember && x.Sym.Host != nil && x.Sym.Host.Action { // an action passed as a value
+			return "((...a) => G.act(" + jsQuote(x.Sym.Host.Mod) + ", " + jsQuote(x.Sym.Host.Name) + ", a))"
+		}
 		if x.Sym != nil && x.Sym.Kind == SBuiltin {
 			switch x.Sym.Name {
 			case "emit", "on", "jsonLd":
@@ -386,6 +389,13 @@ func (g *jsGen) expr(e Expr) string {
 	case *Call:
 		if x.Kind == "hook:useMemo" {
 			return "G.memo(" + g.expr(x.Args[0]) + ")"
+		}
+		if x.Kind == "action" { // await toggle(id) → G.act("todos", "toggle", [id])
+			var args []string
+			for _, a := range x.Args {
+				args = append(args, g.expr(a))
+			}
+			return "G.act(" + jsQuote(x.Host.Mod) + ", " + jsQuote(x.Host.Name) + ", [" + strings.Join(args, ", ") + "])"
 		}
 		if s := g.builtinJS(x); s != "" {
 			return s

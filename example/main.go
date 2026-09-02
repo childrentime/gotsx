@@ -1,16 +1,14 @@
-// 示例应用: 路由来自编译器生成的 gen 包, 宿主模块在 host 包, 动作是普通 Go handler。
+// 示例应用: 路由来自编译器生成的 gen 包, 宿主模块在 host 包, 岛通过类型化 action(gen.HostActions)回到 Go。
 package main
 
 import (
 	"embed"
-	"encoding/json"
 	"flag"
 	"io/fs"
 	"log"
-	"net/http"
+	"os"
 
 	"github.com/childrentime/gotsx/example/gen"
-	"github.com/childrentime/gotsx/example/host"
 	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
@@ -22,27 +20,17 @@ func main() {
 	dev := flag.Bool("dev", false, "开发模式")
 	flag.Parse()
 	err := gotsx.Serve(gotsx.Options{
-		Addr:      *addr,
-		Dev:       *dev,
-		Routes:    gen.Routes,
-		ClientDir: gotsx.FindDir("gen/client"),
-		ClientFS:  gen.ClientFS,
-		PublicFS:  mustSub(publicEmbed, "public"),
-		PublicDir: gotsx.FindDir("public"),
-		NotFound:  gen.NotFound,  // pages/_404.server.tsx
-		ErrorPage: gen.ErrorPage, // pages/_error.server.tsx
-		Actions: map[string]http.HandlerFunc{
-			"POST /actions/like": func(w http.ResponseWriter, r *http.Request) {
-				n, err := host.Data.Models.Like(r.URL.Query().Get("id"))
-				w.Header().Set("Content-Type", "application/json")
-				if err != nil {
-					w.WriteHeader(404)
-					json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-					return
-				}
-				json.NewEncoder(w).Encode(map[string]int{"likes": n})
-			},
-		},
+		Addr:          *addr,
+		Dev:           *dev,
+		Routes:        gen.Routes,
+		ClientDir:     gotsx.FindDir("gen/client"),
+		ClientFS:      gen.ClientFS,
+		PublicFS:      mustSub(publicEmbed, "public"),
+		PublicDir:     gotsx.FindDir("public"),
+		NotFound:      gen.NotFound,                // pages/_404.server.tsx
+		ErrorPage:     gen.ErrorPage,               // pages/_error.server.tsx
+		HostActions:   gen.HostActions,             // typed actions: DataModule.Like → islands call like(id)
+		SessionSecret: os.Getenv("SESSION_SECRET"), // empty → random per start (sessions do not survive restarts)
 	})
 	log.Fatal(err)
 }

@@ -1,5 +1,7 @@
 // Package host is the shop's host module: catalog / cart / wishlist / orders / formatting.
 // Everything is in memory (behind mutexes); swapping in a database is a host implementation detail the dialect never sees.
+// Methods listed in Registry[...].Actions are typed actions: islands import and await them, the framework generates the
+// POST route, JSON decoding and error mapping (gotsx.Invalid → 422 with fields, gotsx.Fail → 400, ErrNotFound → 404).
 package host
 
 import (
@@ -8,7 +10,9 @@ import (
 	"fmt"
 	"math"
 	mrand "math/rand"
+	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -16,6 +20,22 @@ import (
 
 	gotsx "github.com/childrentime/gotsx/runtime"
 )
+
+// sidOf: the anonymous session id an action works on. Pages get it from cookies.sid (issued by server.Options' Before
+// hook); an action called before any page issued one creates it here and sets the cookie on the action response.
+func sidOf(req *gotsx.Req) string {
+	if sid := req.Cookies["sid"]; sid != "" {
+		return sid
+	}
+	sid := NewSID()
+	req.SetCookie(SIDCookie(sid, gotsx.IsHTTPS(req.R)))
+	return sid
+}
+
+// SIDCookie: the anonymous cart/wishlist id — one place for its flags (HttpOnly, SameSite=Lax, Secure over TLS)
+func SIDCookie(sid string, secure bool) *http.Cookie {
+	return &http.Cookie{Name: "sid", Value: sid, Path: "/", MaxAge: 86400 * 30, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure}
+}
 
 // lag simulates backend I/O latency so loading states / skeletons wait for a real "API". SHOP_NOLAG=1 disables it.
 var lagOn = os.Getenv("SHOP_NOLAG") == ""
@@ -141,6 +161,18 @@ func (c *CatalogModule) Flash() []Product {
 		}
 	}
 	return out
+}
+
+// Count: products in a category without the simulated latency of List — for page meta (description) which runs
+// before the page and should not pay for a second full query.
+func (c *CatalogModule) Count(cat string) int {
+	n := 0
+	for _, p := range c.products {
+		if cat == "" || p.Category == cat {
+			n++
+		}
+	}
+	return n
 }
 
 func (c *CatalogModule) Get(id string) (Product, error) {
@@ -305,8 +337,11 @@ func (m *CartModule) View(sid string) CartView {
 	return m.view(sid)
 }
 
-func (m *CartModule) Add(sid, id, variant string, qty int) (CartView, error) {
+// Add: action — cart.add(id, variant, qty) from the AddToCart island. A gotsx.Fail error reaches the island as a
+// 400 with a readable message (e.message); an unknown product is a 404.
+func (m *CartModule) Add(req *gotsx.Req, id, variant string, qty int) (CartView, error) {
 	lag(220, 420)
+	sid := sidOf(req)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	p, ok := Catalog.byID[id]
@@ -323,7 +358,7 @@ func (m *CartModule) Add(sid, id, variant string, qty int) (CartView, error) {
 		}
 	}
 	if have+qty > p.Stock {
-		return CartView{}, fmt.Errorf("Only %d left in stock", p.Stock)
+		return CartView{}, gotsx.Fail(fmt.Sprintf("Only %d left in stock", p.Stock))
 	}
 	lines := m.carts[sid]
 	found := false
@@ -343,8 +378,10 @@ func (m *CartModule) Add(sid, id, variant string, qty int) (CartView, error) {
 	return m.view(sid), nil
 }
 
-func (m *CartModule) SetQty(sid, id, variant string, qty int) CartView {
+// SetQty: action — cart.setQty(id, variant, qty); qty 0 removes the line
+func (m *CartModule) SetQty(req *gotsx.Req, id, variant string, qty int) CartView {
 	lag(160, 320)
+	sid := sidOf(req)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []cartLine
@@ -385,8 +422,10 @@ func (m *WishModule) List(sid string) []string {
 	return out
 }
 
-func (m *WishModule) Toggle(sid, id string) bool {
+// Toggle: action — wish.toggle(id) returns the new state
+func (m *WishModule) Toggle(req *gotsx.Req, id string) bool {
 	lag(150, 300)
+	sid := sidOf(req)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.data == nil {
@@ -432,12 +471,30 @@ func (m *OrdersModule) Get(sid, id string) (Order, error) {
 	return Order{}, fmt.Errorf("%w: order %s", gotsx.ErrNotFound, id)
 }
 
-// Place is only called from Go actions — writes never go through the dialect
-func (m *OrdersModule) Place(sid, name, phone, address string) (Order, error) {
+var phoneRe = regexp.MustCompile(`^\+?[0-9]{7,15}$`) // international: optional +, 7-15 digits (spaces / dashes stripped)
+
+// Place: action — orders.place(name, phone, address). Validation errors are a gotsx.Invalid: the island receives a
+// 422 with e.fields (field → message); an empty cart is a gotsx.Fail (400, e.message).
+func (m *OrdersModule) Place(req *gotsx.Req, name, phone, address string) (Order, error) {
 	lag(500, 900)
+	name, phone, address = strings.TrimSpace(name), strings.TrimSpace(phone), strings.TrimSpace(address)
+	errs := map[string]string{}
+	if len(name) < 2 {
+		errs["name"] = "Name must be at least 2 characters"
+	}
+	if digits := strings.NewReplacer(" ", "", "-", "", "(", "", ")", "").Replace(phone); !phoneRe.MatchString(digits) {
+		errs["phone"] = "Enter a valid phone number (7-15 digits, optional +)"
+	}
+	if len(address) < 5 {
+		errs["address"] = "Address is too short"
+	}
+	if len(errs) > 0 {
+		return Order{}, gotsx.Invalid(errs)
+	}
+	sid := sidOf(req)
 	cv := Cart.View(sid)
 	if cv.Empty {
-		return Order{}, fmt.Errorf("Your cart is empty")
+		return Order{}, gotsx.Fail("Your cart is empty")
 	}
 	m.mu.Lock()
 	m.seq++
@@ -454,6 +511,8 @@ func (m *OrdersModule) Place(sid, name, phone, address string) (Order, error) {
 	Cart.mu.Lock()
 	Cart.clear(sid)
 	Cart.mu.Unlock()
+	// A flash message rides on the signed session cookie and is rendered once by the next page (PageProps.flash)
+	req.Session().Flash("ok", gotsx.Trv(req.Locale, "order.flash", map[string]string{"name": name, "id": o.ID}))
 	return o, nil
 }
 
@@ -719,11 +778,13 @@ var (
 	Site    = SiteModule{}
 )
 
+// Registry: what the dialect sees. Actions are the methods islands may call directly (typed, over a same-origin POST);
+// the *gotsx.Req parameter is injected by the runtime and never appears in the TypeScript signature.
 var Registry = map[string]gotsx.HostModule{
-	"catalog": {Value: Catalog, Go: "host.Catalog"},
-	"cart":    {Value: Cart, Go: "host.Cart"},
-	"wish":    {Value: Wish, Go: "host.Wish"},
-	"orders":  {Value: Orders, Go: "host.Orders"},
+	"catalog": {Value: Catalog, Go: "host.Catalog", Actions: []string{"Feed", "Related"}},
+	"cart":    {Value: Cart, Go: "host.Cart", Actions: []string{"Add", "SetQty"}},
+	"wish":    {Value: Wish, Go: "host.Wish", Actions: []string{"Toggle"}},
+	"orders":  {Value: Orders, Go: "host.Orders", Actions: []string{"Place"}},
 	"intl":    {Value: Intl, Go: "host.Intl"},
 	"site":    {Value: Site, Go: "host.Site"},
 }

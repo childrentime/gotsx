@@ -62,10 +62,15 @@ export default function Counter({ start }: { start: number }) {
 
 ```bash
 go install github.com/childrentime/gotsx/cmd/gotsx@latest
-gotsx new hello && cd hello   # 脚手架: 独立 Go 模块、宿主模块、页面、keyed 列表岛、action、tsconfig
-gotsx dev                     # http://localhost:3000 —— 改 app/**/*.tsx, 浏览器自动刷新
+gotsx new hello && cd hello   # 脚手架: 独立 Go 模块、宿主模块、带 meta 的页面、调用类型化 action 的 keyed 列表岛、
+                              # 带 CSRF 与 flash 消息的表单、给 coding agent 的 AGENTS.md + CLAUDE.md(--db sqlite 用真实数据库)
+gotsx dev                     # http://localhost:3000 —— 改 app/**/*.tsx, 浏览器自动刷新; 编译错误直接浮层显示在页面上
 go build -o hello . && ./hello -addr :8080        # 生产: 一个自包含的二进制
 ```
+
+和 coding agent 一起用? 脚手架的 `AGENTS.md` 带一个托管块, 告诉 agent 这不是 React/Next.js, 并指向
+`app/.gen/docs/`——六份短文档(语法表、约定、Go 侧、错误信息、工作流), 由 `gotsx build` **按你正在用的 gotsx 版本**写出
+(`gotsx docs` 可以直接打印)。
 
 开发框架本身:
 
@@ -83,10 +88,12 @@ make test                     # gen + go test ./...(会构建全部四个示例�
 
 | 命令 | 作用 |
 |---|---|
-| `gotsx new <dir>` | 在独立模块里脚手架一个应用(`--module`、`--tailwind`、`--replace <checkout>` 指向本地框架检出) |
-| `gotsx build [dir]` | hostgen → Tailwind → 方言 → `gen/`(Go + 客户端 JS + 内嵌资源 + 编辑器类型声明) |
-| `gotsx dev [dir]` | build + `go build` + 运行, 监视 `app/ host/ public/ main.go`, 改动即重启; 浏览器**自动刷新**(编译失败时旧版本继续跑); 重建是**增量的**(`host/` 没变就跳过 hostgen, Tailwind 并行: 改 TSX 约 15ms 编完) |
+| `gotsx new <dir>` | 在独立模块里脚手架一个应用(`--module`、`--tailwind`、`--db sqlite` 生成纯 Go SQLite 宿主、`--replace <checkout>` 指向本地框架检出); 同时写 `AGENTS.md` / `CLAUDE.md` |
+| `gotsx build [dir]` | hostgen → Tailwind → 方言 → `gen/`(Go + 客户端 JS + 类型化 action 注册表 + 内嵌资源 + 编辑器类型声明); 顺带刷新 `app/.gen/docs/` 与 `AGENTS.md` 的托管块 |
+| `gotsx dev [dir]` | build + `go build` + 运行, 监视 `app/ host/ public/ main.go`, 改动即重启; 浏览器**自动刷新**并显示**编译错误浮层**(旧版本继续跑); 浏览器里的 `console.error` 与 JS 错误转发到终端; `.gotsx/dev.json`(pid/port/url)与 `.gotsx/diagnostics.json` 把状态暴露给编辑器和 agent(第二个 `gotsx dev` 会拒绝启动); 重建是**增量的** |
 | `gotsx check [dir]` | 只检查不生成; 诊断格式 `file:line:col: message`(`--json` 给工具); 有错 exit 1 |
+| `gotsx export [dir]` | **静态导出**: 构建、运行、爬遍所有路由(含各语言), 按 `--base /子路径` 与 `--site https://host` 改写链接, 把资源拷进 `--out dist`——本仓库的文档站就是这样部署到 GitHub Pages 的 |
+| `gotsx docs [name]` | 打印随版本走的文档(`index language conventions runtime errors agent-workflow`) |
 | `gotsx lsp` | LSP over stdio: 实时诊断、**hover**(类型、props 签名、宿主方法签名)、**跳转定义**(能跳进宿主方法的 Go 源码)—— VS Code / Neovim / Helix / Zed 见 [`editors/`](editors) |
 | `gotsx tailwind` | 下载当前系统的 Tailwind v4 standalone CLI(macOS、Linux、Windows) |
 
@@ -125,13 +132,17 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 
 ## 特性
 
-- **宿主模块**: `import { models } from "host:data"` 背后是 Go; 编译后是零编组的直接调用, 类型反射成 `host.d.ts`。`(T, error)` 方法的 error 变成请求层 recover 的 panic(包了 `ErrNotFound` 的变成 404)。
-- **文件路由**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; 更具体的路由优先。**嵌套布局**: `pages/**/_layout.server.tsx`(`LayoutProps` = `PageProps` + `children`)包住其下的页面; `_404` / `_error` 变成 `gen.NotFound` / `gen.ErrorPage`。`redirect(url, status?)` 与 `notFound()` 中断渲染。
+- **宿主模块**: `import { models } from "host:data"` 背后是 Go; 编译后是零编组的直接调用, 类型(含真实参数名)反射成 `host.d.ts`。`(T, error)` 方法的 error 变成请求层 recover 的 panic(包了 `ErrNotFound` 的变成 404)。
+- **类型化 action**: 把 Go 方法列进 `Registry[...].Actions`, 岛里就能 `import { toggle } from "host:data"` 然后 `await toggle(id)`——类型 `Promise<Todo>` 来自 Go 签名。编译器生成两端(`gen.HostActions`: 按 Go 类型解码 JSON、注入 `*gotsx.Req` 拿会话/cookie、错误映射——`gotsx.Invalid` → 422 带字段消息、`ErrNotFound` → 404)和客户端桩(同源 POST + 标记头, 1 MB 上限, panic 有 recover)。不用手写 fetch, 没有无类型 JSON。
+- **会话、flash、CSRF**: 签名 cookie 会话(`Options.SessionSecret`), 页面通过 `props.session` 读, action 里 `req.Session().Set/Flash/Clear` 写, 经典 handler 用 `gotsx.SessionOf`; 一次性 flash 消息以 `props.flash` 送达; 经典 `<form method="post">` 用 `props.csrf` + `gotsx.VerifyCSRF(r)`。
+- **页面 meta**: 页面旁边 `export function meta(props: PageProps): Meta`; 布局把 `props.meta`(`title`、`description`、`canonical`、`image`、`noIndex`)渲染进 `<head>`。
+- **文件路由**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; 更具体的路由优先。**嵌套布局**: `pages/**/_layout.server.tsx`(`LayoutProps` = `PageProps` + `meta` + `children`)包住其下的页面; `_404` / `_error` 变成 `gen.NotFound` / `gen.ErrorPage`。`redirect(url, status?)` 与 `notFound()` 中断渲染。
 - **流式 SSR**: `<Suspense fallback={…}>` 随外壳先发 fallback, children 在外壳 flush 之后**于自己的 goroutine 里**渲染; 多个边界并发求值、谁先完成先流入(乱序、可嵌套、错误隔离)。语言里没有 async: 慢的宿主调用就放进边界。
 - **岛 + SPA 跳转**: 页面零 JS; 岛按需加载; 跳转拉 HTML 再 morph(idiomorph), 岛按 DOM 同一性存活, 状态不丢; 顶部进度条与悬停预取让它秒开。
 - **keyed 列表**: `xs.map((x) => <li key={x.id}>…</li>)` 按 key 复用 / 移动 / 销毁 DOM —— 输入框、焦点、行内 effect 在重排后都保留; 不写 `key` 的列表和以前一样整块重建。
 - **走位 hydrate**: 服务端只标记响应式的文本/条件/列表; 客户端按同一编译器给出的顺序认领节点, 复用现有 DOM, 不 diff。
-- **会话 / 中间件**: 请求 cookie 进 `PageProps.Cookies`; `Options.Before` 钩子可以种 cookie 或做鉴权; `Options.Middleware` 是标准中间件链。
+- **Cookie / 中间件**: 请求 cookie 进 `PageProps.Cookies`; `Options.Before` 钩子可以种 cookie 或做鉴权; `Options.Middleware` 是标准中间件链。
+- **对 agent 友好**: 每个脚手架都有 `AGENTS.md` 托管块(Next.js 的做法)和 `app/.gen/docs/` 里随版本走的文档; `gotsx dev` 暴露自己的状态(`.gotsx/dev.json`)与结构化诊断(`.gotsx/diagnostics.json`), 把浏览器错误转发到终端, 并在页面上浮层显示编译错误。
 - **Source map**: `go build` 报错与 panic 堆栈指回 `.tsx` 行号。
 - **编辑器**: `tsconfig.json` + 生成的 `app/.gen/gotsx.d.ts` / `host.d.ts` 让 TypeScript 工具链正常工作; `gotsx lsp` 补上方言自己的诊断、hover 与跳转定义(宿主方法直接跳进 Go 源码)。
 - **设计系统**: [`design/`](design) 提供 gotsx UI —— shadcn 风格的中性 token、暗色模式、组件类 —— 一份 Tailwind 层和一份等价的手写 CSS; 所有 demo 与脚手架出来的应用都用它, 新应用第一天就是成品的样子。
@@ -197,8 +208,9 @@ make check       # 对每个示例应用跑 gotsx check
 
 - [ ] **独立安全审计**(自查、威胁模型与 `govulncheck` 结果见 [`SECURITY.md`](SECURITY.md))
 - [ ] **1.0**: 冻结 [`STABILITY.md`](STABILITY.md) 的 Stable 层, 把 `Suspense` 与 LSP 从 Experimental 升级
+- [ ] **检查器里的实参可赋值性**: 目前类型不符或多余的调用实参由 Go 编译器报错(带 `.tsx` 行号), `gotsx check` 不报; 移进检查器后编辑器就能提示
 
-已完成: 两个后端、source map、测试套件、Tailwind、会话/中间件、跨岛事件、生产 HTTP 加固、单二进制部署、响应式所有者与清理、岛错误边界、SEO / 图片 / 预取 / 遥测 / PWA、可选 i18n、四个真实应用、可安装模块 + `gotsx new`、语言长尾(循环、switch、原地数组方法、`interface extends`、正则、`Date`)、keyed 列表 diff、redirect / notFound / catch-all 路由、`gotsx check` + LSP(诊断、hover、跳转)+ 编辑器类型声明、增量重建的 dev 自动刷新、跨平台工具链、**流式 SSR(`Suspense`)**、**嵌套布局 / `_404` / `_error`**、**`Record` 缺席语义**、**稳定性契约**、**贯穿所有 demo 的设计系统**。
+已完成: 两个后端、source map、测试套件、Tailwind、会话/中间件、跨岛事件、生产 HTTP 加固、单二进制部署、响应式所有者与清理、岛错误边界、SEO / 图片 / 预取 / 遥测 / PWA、可选 i18n、四个真实应用、可安装模块 + `gotsx new`、语言长尾(循环、switch、原地数组方法、`interface extends`、正则、`Date`)、keyed 列表 diff、redirect / notFound / catch-all 路由、`gotsx check` + LSP(诊断、hover、跳转)+ 编辑器类型声明、增量重建的 dev 自动刷新、跨平台工具链、流式 SSR(`Suspense`)、嵌套布局 / `_404` / `_error`、`Record` 缺席语义、稳定性契约、贯穿所有 demo 的设计系统、GitHub runner 上的基准测试、Cloudflare Workers 目标、**类型化 action**、**签名会话 / flash / CSRF token**、**页面 `meta`**、**dev 错误浮层 + 浏览器错误转发 + 机器可读的 dev 状态**、**`gotsx export`**、**`--db sqlite`**、**`AGENTS.md` + 随版本走的 agent 文档**。
 
 ## 许可
 

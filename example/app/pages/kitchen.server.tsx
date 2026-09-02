@@ -1,4 +1,4 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { models } from "host:data";
 import Todos from "../islands/Todos.client";
 
@@ -35,6 +35,10 @@ function label(kind: string): string {
       out += "!";
   }
   return out;
+}
+
+export function meta(): Meta {
+  return { title: "Kitchen sink", description: "Every construct the dialect supports, on one page." };
 }
 
 export default function Kitchen({ query }: PageProps) {

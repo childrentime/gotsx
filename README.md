@@ -62,10 +62,15 @@ export default function Counter({ start }: { start: number }) {
 
 ```bash
 go install github.com/childrentime/gotsx/cmd/gotsx@latest
-gotsx new hello && cd hello   # scaffold: own Go module, host module, a page, a keyed-list island, an action, tsconfig
-gotsx dev                     # http://localhost:3000 — edit app/**/*.tsx, the browser reloads by itself
+gotsx new hello && cd hello   # scaffold: own Go module, host module, a page with meta, a keyed-list island calling typed actions,
+                              # a CSRF-protected form with flash messages, AGENTS.md + CLAUDE.md for coding agents (--db sqlite for a real database)
+gotsx dev                     # http://localhost:3000 — edit app/**/*.tsx, the browser reloads; compile errors overlay in the browser
 go build -o hello . && ./hello -addr :8080        # one self-contained binary for production
 ```
+
+Working with a coding agent? The scaffold's `AGENTS.md` carries a managed block that tells the agent this is not
+React/Next.js and points it at `app/.gen/docs/` — six short documents (syntax table, conventions, Go side, error
+messages, workflow) written by `gotsx build` **for the exact gotsx version you use** (`gotsx docs` prints them).
 
 To hack on the framework itself:
 
@@ -83,10 +88,12 @@ make test                     # gen + go test ./... (also builds all four demo a
 
 | Command | What it does |
 |---|---|
-| `gotsx new <dir>` | Scaffold an app in its own module (`--module`, `--tailwind`, `--replace <checkout>` for local framework development) |
-| `gotsx build [dir]` | hostgen → Tailwind → dialect → `gen/` (Go + client JS + embedded assets + editor typings) |
-| `gotsx dev [dir]` | build + `go build` + run, watch `app/ host/ public/ main.go`, restart on change; the browser **live-reloads** (a compile error keeps the old build serving); rebuilds are **incremental** (hostgen only when `host/` changed, Tailwind in parallel: a TSX edit recompiles in ~15ms) |
+| `gotsx new <dir>` | Scaffold an app in its own module (`--module`, `--tailwind`, `--db sqlite` for a pure-Go SQLite host, `--replace <checkout>` for local framework development); writes `AGENTS.md` / `CLAUDE.md` |
+| `gotsx build [dir]` | hostgen → Tailwind → dialect → `gen/` (Go + client JS + typed action registry + embedded assets + editor typings); refreshes `app/.gen/docs/` and the `AGENTS.md` block |
+| `gotsx dev [dir]` | build + `go build` + run, watch `app/ host/ public/ main.go`, restart on change; the browser **live-reloads** and shows a **compile-error overlay** (the old build keeps serving); browser `console.error`s and JS errors are forwarded to the terminal; `.gotsx/dev.json` (pid/port/url) and `.gotsx/diagnostics.json` make the state visible to editors and agents (a second `gotsx dev` refuses to start); rebuilds are **incremental** |
 | `gotsx check [dir]` | Type-check only; diagnostics as `file:line:col: message` (`--json` for tools); exit 1 on errors |
+| `gotsx export [dir]` | **Static export**: build, run, crawl every route (locales included), rewrite `--base /subpath` and `--site https://host`, copy assets into `--out dist` — this repo's docs site deploys to GitHub Pages this way |
+| `gotsx docs [name]` | Print the version-matched docs (`index language conventions runtime errors agent-workflow`) |
 | `gotsx lsp` | Language Server over stdio: diagnostics as you type, **hover** (types, prop signatures, host method signatures) and **go-to-definition** (into the Go source of a host method) — see [`editors/`](editors) for VS Code, Neovim, Helix, Zed |
 | `gotsx tailwind` | Download the Tailwind v4 standalone CLI for this OS/arch (macOS, Linux, Windows) |
 
@@ -106,9 +113,9 @@ Go side: the generated *_gen.go compiles together with your main.go / host packa
 | Directory | Contents |
 |---|---|
 | `compiler/` | `lexer` / `parser` / `check` / `gogen` / `jsgen` / `compile` (+ `Analyze` for check/LSP) |
-| `runtime/` | node model, hydration markers, dialect builtins, HTTP (CSP/CSRF/gzip/caching/health/graceful shutdown), request cookies, `Before` hook, host-type reflection, i18n, redirect/notFound |
+| `runtime/` | node model, hydration markers, dialect builtins, HTTP (CSP/CSRF/gzip/caching/health/graceful shutdown), typed actions, signed sessions / flash / CSRF tokens, request cookies, `Before` hook, host-type reflection, i18n, redirect/notFound |
 | `client/` | signals, `el/t/text/cond/each` (keyed reuse), resumable hydration, island loader, SPA nav, progress bar, prefetch, cross-island `emit`/`on`, i18n, dev live reload |
-| `cmd/gotsx/` | `new` / `build` / `dev` / `check` / `lsp` / `tailwind` |
+| `cmd/gotsx/` | `new` / `build` / `dev` / `check` / `export` / `docs` / `lsp` / `tailwind`; the embedded agent docs (`docs/*.md`) and the `AGENTS.md` block |
 | `editors/` | LSP setup for VS Code (extension source), Neovim, Helix, Zed |
 | `design/` | **gotsx UI**: the shared design system (shadcn-style neutral tokens + component classes) — a Tailwind v4 layer and a plain-CSS twin, used by every demo and by `gotsx new` |
 | `example/` `site/` `shop/` `admin/` | real apps, also used as integration tests (`example` has a language kitchen-sink page, a streaming `Suspense` panel and the `_layout` / `_404` / `_error` conventions) |
@@ -125,13 +132,17 @@ The full, searchable syntax table lives in the `site` docs at `/docs/language`.
 
 ## Features
 
-- **Host modules**: `import { models } from "host:data"` is backed by Go; after compilation it's a direct call with zero marshalling, and types are reflected into `host.d.ts`. A `(T, error)` method turns the error into a panic recovered by the request layer (an `ErrNotFound`-wrapped one becomes a 404).
-- **File routing**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; more specific routes win. **Nested layouts**: `pages/**/_layout.server.tsx` (`LayoutProps` = `PageProps` + `children`) wrap the pages below them; `_404` / `_error` become `gen.NotFound` / `gen.ErrorPage`. `redirect(url, status?)` and `notFound()` abort a render.
+- **Host modules**: `import { models } from "host:data"` is backed by Go; after compilation it's a direct call with zero marshalling, and types (with real parameter names) are reflected into `host.d.ts`. A `(T, error)` method turns the error into a panic recovered by the request layer (an `ErrNotFound`-wrapped one becomes a 404).
+- **Typed actions**: list a Go method in `Registry[...].Actions` and an island can `import { toggle } from "host:data"` and `await toggle(id)` — `Promise<Todo>` typed from the Go signature. The compiler generates both halves (`gen.HostActions`: JSON decoding by Go type, `*gotsx.Req` injection for session/cookies, error mapping — `gotsx.Invalid` → 422 with field messages, `ErrNotFound` → 404) and the client stub (same-origin POST with a marker header, 1 MB limit, panics recovered). No hand-written fetch, no untyped JSON.
+- **Sessions, flash, CSRF**: a signed cookie session (`Options.SessionSecret`) readable as `props.session`, writable from actions (`req.Session().Set/Flash/Clear`) and classic handlers (`gotsx.SessionOf`); one-shot flash messages arrive as `props.flash`; classic `<form method="post">` gets `props.csrf` + `gotsx.VerifyCSRF(r)`.
+- **Page meta**: `export function meta(props: PageProps): Meta` next to the page; layouts render `props.meta` (`title`, `description`, `canonical`, `image`, `noIndex`) into `<head>`.
+- **File routing**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; more specific routes win. **Nested layouts**: `pages/**/_layout.server.tsx` (`LayoutProps` = `PageProps` + `meta` + `children`) wrap the pages below them; `_404` / `_error` become `gen.NotFound` / `gen.ErrorPage`. `redirect(url, status?)` and `notFound()` abort a render.
 - **Streaming SSR**: `<Suspense fallback={…}>` ships the fallback with the shell and renders its children **in their own goroutine** after the shell is flushed; several boundaries resolve concurrently and stream in as they finish (out of order, nested, with error isolation). No async in the language: the boundary is where the slow host call goes.
 - **Islands + SPA navigation**: pages ship zero JS; islands load on demand; navigation fetches HTML and morphs it (idiomorph), islands survive by DOM identity so state isn't lost; a top progress bar and hover prefetch make it feel instant.
 - **Keyed lists**: `xs.map((x) => <li key={x.id}>…</li>)` reuses, moves and disposes DOM per key — inputs, focus and per-row effects survive reorders; lists without `key` rebuild as before.
 - **Resumable hydration**: the server only marks the reactive text/conditions/lists; the client claims nodes in the same order the same compiler produced, reusing existing DOM without diffing.
-- **Sessions / middleware**: request cookies flow into `PageProps.Cookies`; the `Options.Before` hook can set cookies or do auth; `Options.Middleware` is a standard middleware chain.
+- **Cookies / middleware**: request cookies flow into `PageProps.Cookies`; the `Options.Before` hook can set cookies or do auth; `Options.Middleware` is a standard middleware chain.
+- **Agent-ready**: every scaffold has an `AGENTS.md` managed block (Next.js-style) and version-matched docs in `app/.gen/docs/`; `gotsx dev` exposes its state (`.gotsx/dev.json`) and structured diagnostics (`.gotsx/diagnostics.json`), forwards browser errors to the terminal and overlays compile errors in the page.
 - **Source maps**: `go build` errors and panic stacks point back to `.tsx` line numbers.
 - **Editor support**: `tsconfig.json` + generated `app/.gen/gotsx.d.ts` / `host.d.ts` make TypeScript tooling happy; `gotsx lsp` adds the dialect's diagnostics, hover and go-to-definition (a host method jumps into its Go source).
 - **Design system**: [`design/`](design) ships gotsx UI — shadcn-style neutral tokens, dark mode, and component classes — as a Tailwind layer and a plain-CSS twin; every demo and every scaffolded app uses it, so a new app looks finished on day one.
@@ -202,8 +213,9 @@ See [`SECURITY.md`](SECURITY.md). In short: the dialect has no "inject raw HTML"
 
 - [ ] An **independent security audit** (the self-review, threat model and `govulncheck` results are in [`SECURITY.md`](SECURITY.md))
 - [ ] **1.0**: freeze the Stable tier of [`STABILITY.md`](STABILITY.md), promote `Suspense` and the LSP out of Experimental
+- [ ] **Argument assignability in the checker**: a wrong-typed or extra call argument is currently reported by the Go compiler (with the `.tsx` line), not by `gotsx check`; moving it into the checker makes the editor catch it
 
-Done: both backends, source maps, a test suite, Tailwind, sessions/middleware, cross-island events, production HTTP hardening, single-binary deploy, reactive ownership and cleanup, island error boundaries, SEO / images / prefetch / telemetry / PWA, optional i18n, four real apps, installable module + `gotsx new`, the language long tail (loops, switch, in-place array methods, `interface extends`, regex, `Date`), keyed list diffing, redirect / notFound / catch-all routes, `gotsx check` + LSP (diagnostics, hover, definition) + editor typings, dev live reload with incremental rebuilds, Windows-friendly toolchain, **streaming SSR with `Suspense`**, **nested layouts / `_404` / `_error`**, **`Record` absence semantics**, **a stability contract**, **a shared design system across all demos**.
+Done: both backends, source maps, a test suite, Tailwind, sessions/middleware, cross-island events, production HTTP hardening, single-binary deploy, reactive ownership and cleanup, island error boundaries, SEO / images / prefetch / telemetry / PWA, optional i18n, four real apps, installable module + `gotsx new`, the language long tail (loops, switch, in-place array methods, `interface extends`, regex, `Date`), keyed list diffing, redirect / notFound / catch-all routes, `gotsx check` + LSP (diagnostics, hover, definition) + editor typings, dev live reload with incremental rebuilds, Windows-friendly toolchain, streaming SSR with `Suspense`, nested layouts / `_404` / `_error`, `Record` absence semantics, a stability contract, a shared design system across all demos, benchmarks on GitHub runners, a Cloudflare Workers target, **typed actions**, **signed sessions / flash / CSRF tokens**, **page `meta`**, **dev error overlay + browser-error forwarding + machine-readable dev state**, **`gotsx export`**, **`--db sqlite`**, **`AGENTS.md` + version-matched agent docs**.
 
 ## License
 

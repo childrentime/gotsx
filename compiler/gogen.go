@@ -154,7 +154,7 @@ func (g *goGen) goType(t Type) string {
 	case *MapT:
 		return "map[string]" + g.goType(x.Val)
 	case *ObjT:
-		if x.Host {
+		if x.Host && !strings.HasPrefix(x.GoName, "gotsx.") { // framework builtin objects (Meta / Flash) live in the runtime package, not the host
 			g.needHost = true
 		}
 		return x.GoName
@@ -259,6 +259,7 @@ func (g *goGen) genFunc(d *FuncDecl) {
 	ft := d.Sym.Type.(*FnT)
 	g.line("func %s(%s) %s {", d.Sym.Go, g.paramList(d.Params, ft), g.goType(ft.Ret))
 	g.ind++
+	g.bindParams(d.Params, ft)
 	saveRet := g.curRet
 	g.curRet = ft.Ret
 	g.stmts(d.Body.Stmts)
@@ -286,6 +287,15 @@ func (g *goGen) paramList(params []*Param, ft *FnT) string {
 		ps = append(ps, name+" "+g.goType(ft.Params[i].Type))
 	}
 	return strings.Join(ps, ", ")
+}
+
+// bindParams expands destructured parameters of plain functions (meta({ params }: PageProps) etc.): paramList names them pN, this binds the parts
+func (g *goGen) bindParams(params []*Param, ft *FnT) {
+	for i, p := range params {
+		if p.Pat.Kind != PatIdent {
+			g.bindParam(p.Pat, "p"+strconv.Itoa(i), ft.Params[i].Type)
+		}
+	}
 }
 
 // 解构参数: 生成 a := props.A 等
@@ -448,6 +458,9 @@ func (g *goGen) stmt(s Stmt) {
 			return
 		}
 		g.line("%s := func(%s) %s {", d.Sym.Go, g.paramList(d.Params, ft), g.goType(ft.Ret))
+		g.ind++
+		g.bindParams(d.Params, ft)
+		g.ind--
 		saveRet := g.curRet
 		g.curRet = ft.Ret
 		g.block(d.Body)

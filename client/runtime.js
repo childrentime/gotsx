@@ -74,6 +74,17 @@ export function objectKeys(o) { return Object.keys(o).sort(); }                 
 export function objectValues(o) { return objectKeys(o).map((k) => o[k]); }
 export function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }                  // localeCompare: 两端都按码点比较
 export function match(s, re) { const m = s.match(re); return m ? Array.from(m) : []; }  // 没匹配 → [](与 Go 一致)
+
+/* Typed actions: await toggle(id) in an island compiles to G.act("todos", "toggle", [id]) → POST /_gotsx/act/todos/toggle.
+   A non-2xx response throws an Error with e.status and e.fields (field → message for 422 validation errors) */
+export async function act(mod, name, args) {
+  const base = (typeof window !== "undefined" && window.__GOTSX && window.__GOTSX.base) || "";
+  const r = await fetch(base + "/_gotsx/act/" + mod + "/" + name, { method: "POST", headers: { "Content-Type": "application/json", "X-Gotsx-Action": "1" }, body: JSON.stringify(args) });
+  let d = {};
+  try { d = await r.json(); } catch { /* empty body */ }
+  if (!r.ok) { const e = new Error(d.error || r.statusText); e.status = r.status; e.fields = d.fields || {}; throw e; }
+  return d.data;
+}
 export function isoDate(ms) { const d = new Date(ms); return isNaN(d) ? "" : d.toISOString(); }
 export function jsonLd(s) { const el = document.createElement("script"); el.type = "application/ld+json"; el.textContent = s; return el; }
 
@@ -285,6 +296,12 @@ function keyedEach(list, item, key) {
   const start = hy ? claimComment("[") : document.createComment("[");
   let end, initial = true, initialNodes = [];
   let items = new Map();                     // key → { nodes, o }
+  const dropItem = (it) => {
+    dispose(it.o);
+    const idx = holder.children.indexOf(it.o);
+    if (idx >= 0) holder.children.splice(idx, 1);
+    for (const n of it.nodes) if (n.parentNode) n.parentNode.removeChild(n);
+  };
   const render = (x, i, anchor) => {
     const o = newOwner();
     holder.children.push(o);
@@ -307,17 +324,20 @@ function keyedEach(list, item, key) {
         let k = key(x, i);
         if (next.has(k)) k = String(k) + "\u0000" + i;   // 重复 key: 退化成按位置
         let it = items.get(k);
-        if (it) items.delete(k); else it = render(x, i, anchor);
+        if (it) {
+          items.delete(k);
+          if (it.x !== x) {                    // same key, different object (setItems(items.map(…))): re-render this item in place
+            const fresh = render(x, i, anchor);
+            dropItem(it);
+            it = fresh;
+          }
+        } else it = render(x, i, anchor);
+        it.x = x;
         if (it.nodes.length) anchor = it.nodes[it.nodes.length - 1];
         next.set(k, it);
         order.push(it);
       });
-      for (const it of items.values()) {       // 消失的项: 销毁 effect, 删 DOM
-        dispose(it.o);
-        const idx = holder.children.indexOf(it.o);
-        if (idx >= 0) holder.children.splice(idx, 1);
-        for (const n of it.nodes) if (n.parentNode) n.parentNode.removeChild(n);
-      }
+      for (const it of items.values()) dropItem(it);   // vanished items: dispose effects, remove DOM
       items = next;
       if (initial) {
         initial = false;

@@ -137,6 +137,13 @@
   .badge-success { @apply bg-success/10 text-success; }
   .badge-warning { @apply bg-warning/10 text-warning; }
 
+  /* alerts: flash messages and inline errors (kinds match Session.Flash: ok | error | info | warning) */
+  .alert { @apply rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground; }
+  .alert-ok, .alert-success { @apply border-success/40 bg-success/10 text-success; }
+  .alert-error, .alert-destructive { @apply border-destructive/40 bg-destructive/10 text-destructive; }
+  .alert-warning { @apply border-warning/40 bg-warning/10 text-warning; }
+  .alert-info { @apply bg-muted text-foreground; }
+
   /* Tables */
   .table { @apply w-full caption-bottom text-sm; }
   .table th { @apply h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground; }

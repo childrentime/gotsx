@@ -291,9 +291,9 @@ export default function Draft({ path }: PageProps) { return <h1>draft</h1>; }`)
 	routes, _ := os.ReadFile(filepath.Join(out, "routes_gen.go"))
 	rs := string(routes)
 	for _, w := range []string{
-		`Render: func(p gotsx.PageProps) gotsx.Node { return pages__layout_Root(gotsx.LayoutProps{PageProps: p, Children: pages_index_Home(p)}) }`,
-		`return pages__layout_Root(gotsx.LayoutProps{PageProps: p, Children: pages_docs__layout_Docs(gotsx.LayoutProps{PageProps: p, Children: pages_docs_____slug__Doc(p)})})`,
-		`var NotFound func(gotsx.PageProps) gotsx.Node = func(p gotsx.PageProps) gotsx.Node { return pages__layout_Root(gotsx.LayoutProps{PageProps: p, Children: pages__404_NotFound(p)}) }`,
+		"Render: func(p gotsx.PageProps) gotsx.Node {\n\t\t_m := gotsx.Meta{}\n\t\treturn pages__layout_Root(gotsx.LayoutProps{PageProps: p, Meta: _m, Children: pages_index_Home(p)})\n\t}},",
+		`return pages__layout_Root(gotsx.LayoutProps{PageProps: p, Meta: _m, Children: pages_docs__layout_Docs(gotsx.LayoutProps{PageProps: p, Meta: _m, Children: pages_docs_____slug__Doc(p)})})`,
+		"var NotFound func(gotsx.PageProps) gotsx.Node = func(p gotsx.PageProps) gotsx.Node {\n\t_m := gotsx.Meta{}\n\treturn pages__layout_Root(gotsx.LayoutProps{PageProps: p, Meta: _m, Children: pages__404_NotFound(p)})\n}",
 		`pages__error_Oops(gotsx.ErrorProps{PageProps: p, Message: err.Error()})`,
 	} {
 		if !strings.Contains(rs, w) {
@@ -464,7 +464,7 @@ export default function Home({ query }: PageProps) {
 	// models.search → 宿主方法 + Go 源码位置(hostgen 反射)
 	l, col = at(9, "models.search(", "search")
 	h = c.HoverAt(pageFile, l, col)
-	if h == nil || !strings.Contains(h.Text, "(host method) Store.search(arg0: string): Model[]") || h.Def == nil || !strings.HasSuffix(h.Def.File, "helper_test.go") {
+	if h == nil || !strings.Contains(h.Text, "(host method) Store.search(q: string): Model[]") || h.Def == nil || !strings.HasSuffix(h.Def.File, "helper_test.go") {
 		t.Errorf("hover host method: %s", show(h))
 	}
 	// query.q → Record 键

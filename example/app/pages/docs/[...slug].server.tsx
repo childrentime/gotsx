@@ -1,6 +1,10 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 
 /** catch-all 路由: /docs/a/b/c → params.slug = "a/b/c" */
+export function meta({ params }: PageProps): Meta {
+  return { title: "Docs / " + params.slug, noIndex: true };
+}
+
 export default function Doc({ params }: PageProps) {
   const parts = params.slug.split("/");
   return (

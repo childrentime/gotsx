@@ -1,8 +1,14 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { models } from "host:data";
 import { fmtDate, fmtNumber } from "host:intl";
 import LikeButton from "../../islands/LikeButton.client";
 import TagPicker from "../../islands/TagPicker.client";
+
+/** meta receives the same props as the page: the model title becomes the <title> (a missing model → 404, same as the page) */
+export function meta({ params }: PageProps): Meta {
+  const m = models.get(params.id);
+  return { title: m.title, description: m.desc };
+}
 
 export default function ModelPage({ params }: PageProps) {
   const m = models.get(params.id);         // 不存在: Go 返回 error → 路由层 404(_404.server.tsx)

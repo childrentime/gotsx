@@ -1,4 +1,5 @@
 import { useState, emit } from "gotsx";
+import { setQty } from "host:cart";              // typed action: CartModule.SetQty
 import type { CartView } from "host:cart";
 import Icon from "../ui/Icon";
 
@@ -7,11 +8,13 @@ export default function CartPage({ cart, locale = "" }: { cart: CartView; locale
   const [busy, setBusy] = useState(false);
   const update = async (id: string, variant: string, qty: number) => {
     setBusy(true);
-    const r = await fetch("/actions/cart/set", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, variant, qty }) });
-    const d = await r.json();
-    setC(d.cart);
-    emit("cart:changed", { count: d.cart.count });
-    setBusy(false);
+    try {
+      const cv = await setQty(id, variant, qty);
+      setC(cv);
+      emit("cart:changed", { count: cv.count });
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <div class={busy ? "opacity-60 transition-opacity" : "transition-opacity"}>

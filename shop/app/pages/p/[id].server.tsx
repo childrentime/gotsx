@@ -1,4 +1,4 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { get, catLabel, productReviews, flashLeftMs } from "host:catalog";
 import { fmtPrice, fmtSold } from "host:intl";
 import { url } from "host:site";
@@ -10,7 +10,19 @@ import Countdown from "../../islands/Countdown.client";
 import ProductGallery from "../../islands/ProductGallery.client";
 import Related from "../../islands/Related.client";
 
-export default function ProductPage({ params, cookies, locale }: PageProps) {
+// Meta runs before the page: title / description / og:image for the product (get() 404s for an unknown id,
+// so the not-found page is served before the page body is even attempted)
+export function meta(props: PageProps): Meta {
+  const lc = props.locale !== "" ? props.locale : "en";
+  const p = get(props.params.id);
+  return {
+    title: p.title,
+    description: tv(lc, "product.meta", { desc: p.desc, price: fmtPrice(p.price), sold: fmtSold(p.sold), reviews: String(p.reviews) }),
+    image: url(`/img/p/${p.id}`),
+  };
+}
+
+export default function ProductPage({ params, cookies, locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   const sid = cookies.sid ?? "";
   const p = get(params.id);
@@ -32,12 +44,12 @@ export default function ProductPage({ params, cookies, locale }: PageProps) {
     },
     aggregateRating: { "@type": "AggregateRating", ratingValue: p.rating, reviewCount: p.reviews },
   });
-  const meta = tv(lc, "product.meta", { desc: p.desc, price: fmtPrice(p.price), sold: fmtSold(p.sold), reviews: String(p.reviews) });
   const perks = [["truck", t(lc, "pperk.ship")], ["undo", t(lc, "pperk.return")], ["shield", t(lc, "pperk.auth")], ["zap", t(lc, "pperk.fast")]];
   const dist = [[tv(lc, "product.stars", { n: "5" }), 78], [tv(lc, "product.stars", { n: "4" }), 16], [tv(lc, "product.stars", { n: "3" }), 6]];
   const features = [t(lc, "feature.1"), t(lc, "feature.2"), t(lc, "feature.3"), t(lc, "feature.4"), t(lc, "feature.5"), t(lc, "feature.6")];
   return (
-    <Layout title={p.title} sid={sid} locale={lc} active={p.category} wide desc={meta} path={`/p/${p.id}`} image={url(`/img/p/${p.id}`)} ogType="product" ld={ld}>
+    <Layout sid={sid} locale={lc} active={p.category} wide path={path}>
+      {jsonLd(ld)}
       <nav class="mb-5 flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="breadcrumb">
         <a href="/" class="transition-colors hover:text-foreground">{t(lc, "nav.home")}</a><Icon name="chevron-right" className="h-3 w-3" />
         <a href={`/c/${p.category}`} class="transition-colors hover:text-foreground">{catLabel(p.category)}</a><Icon name="chevron-right" className="h-3 w-3" />

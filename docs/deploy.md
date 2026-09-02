@@ -59,7 +59,24 @@ in well under a second, so scale-to-zero is fine.
 `render.yaml` is a Blueprint for the same Docker image on the free plan. Import the repository in the Render
 dashboard and it deploys the `shop` demo.
 
+## Static export (GitHub Pages, Netlify, S3, any file host)
+
+For pages that need no per-request server state, `gotsx export` turns the app into a directory of HTML:
+
+```bash
+gotsx export . --out dist --base /my-repo --site https://user.github.io   # project page under a subpath
+gotsx export . --out dist                                                   # root site
+```
+
+It builds, starts the binary on a local port, crawls every same-origin link from `/` (locale alternates from
+`hreflang` included; or pass `--routes /,/docs,...`), rewrites root-relative URLs and absolute local URLs
+(`hreflang`, `canonical`) to `--site` + `--base`, copies `gen/client` → `_gotsx/` and `public/`, and writes
+`404.html` + `.nojekyll`. Islands keep working (their JS is static); typed actions and forms need a server.
+This repository's docs site is deployed exactly this way (`.github/workflows/pages.yml`).
+
 ## Configuration
+
+- `SESSION_SECRET` — the HMAC key for the signed session cookie (`Options.SessionSecret`). Required in production for `props.session` / flash / CSRF tokens to survive restarts and to be shared between replicas.
 
 - `-addr :3000` — listen address (flag, the demos also honour it).
 - `-dev` — development mode only (detailed errors, live-reload endpoint). Never in production.

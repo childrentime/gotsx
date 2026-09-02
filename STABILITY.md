@@ -28,7 +28,11 @@ statements (`const let if for-of for while switch break continue try throw retur
 array/string/number methods listed in the table, `String Number Boolean parseInt parseFloat isNaN
 encodeURIComponent decodeURIComponent`), i18n builtins (`t tv plural fmtNum fmtCur fmtDate lpath`), page control
 flow (`redirect notFound`), `jsonLd`, `isoDate`, regex literals (RE2 subset), the server/client fence and its
-error semantics. Adding to the subset is never breaking; removing from it always is.
+error semantics, **typed actions** (value-importing an `Actions` member from `host:*` in an island, `await`
+typed as `Promise<T>` from the Go signature, `Error.status` / `Error.fields` on failure), **page meta**
+(`export function meta(props?: PageProps): Meta`, `Meta` / `Flash` importable from `"gotsx"`,
+`LayoutProps.meta`) and the `PageProps` fields `session` / `flash` / `csrf`. Adding to the subset is never
+breaking; removing from it always is.
 
 **Semantic conventions.** Numbers are float64; strings are handled by rune on the server; an absent optional
 primitive is its zero value (`""` `0` `false`) and `??` ≡ `||` for primitives; an absent optional object is
@@ -44,12 +48,21 @@ conventions, not rules; `*.server.tsx` / `*.client.tsx` / no-suffix compile targ
 
 **Runtime API used from `main.go`.** `gotsx.Serve`, `gotsx.Handler` (the same handler chain without a server, for
 your own `http.Server` / mux / tests), `gotsx.Options` and every exported field it has today,
-`gotsx.Route`, `gotsx.PageProps` / `LayoutProps` / `ErrorProps`, `gotsx.HostModule` / `GenerateHost`,
-`gotsx.ErrNotFound`, `gotsx.I18n`, `gotsx.ClientEvent`, `gotsx.FindDir`, `gotsx.SameOrigin`, and the node
-constructors an app may use to build custom pages in Go (`El A AB AN Text Frag Render`).
+`gotsx.Route`, `gotsx.PageProps` / `LayoutProps` / `ErrorProps` / `Meta` / `Flash`, `gotsx.HostModule`
+(incl. `Actions`) / `GenerateHost`, `gotsx.HostAction` (as produced by `gen.HostActions`), `gotsx.Req`,
+`gotsx.Session` and its methods, `gotsx.SessionOf`, `gotsx.VerifyCSRF`, `gotsx.Invalid` / `Fail` /
+`Unauthorized` / `Forbidden` / `ValidationError`, `gotsx.Arg`, `gotsx.IsHTTPS`, `gotsx.ErrNotFound`, `gotsx.I18n`, `gotsx.ClientEvent`, `gotsx.FindDir`,
+`gotsx.SameOrigin`, and the node constructors an app may use to build custom pages in Go
+(`El A AB AN Text Frag Render`).
 
-**CLI.** `gotsx new build dev check lsp tailwind version`, their documented flags, `gotsx check --json`'s
-`[{file,line,col,msg}]` shape, and the exit codes (0 ok, 1 diagnostics, 2 usage/setup error).
+**CLI.** `gotsx new build dev check export docs lsp tailwind version`, their documented flags (incl. `new --db
+sqlite`, `export --out --base --site --routes --port`), `gotsx check --json`'s `[{file,line,col,msg}]` shape,
+and the exit codes (0 ok, 1 diagnostics, 2 usage/setup error).
+
+**Dev state files and agent docs.** `.gotsx/dev.json` (`pid port url started`) and `.gotsx/diagnostics.json`
+(`title`, `errors: [{file,line,col,msg}]`, `text`) written by `gotsx dev`; the `AGENTS.md` managed-block markers
+`<!-- BEGIN:gotsx-agent-rules -->` / `<!-- END:gotsx-agent-rules -->` (content inside the block evolves; content
+outside it is never touched); `app/.gen/docs/*.md` file names.
 
 **HTTP surface.** `/_gotsx/*` is reserved; `/public/*` serves the app's public dir; `/healthz` `/readyz`;
 security defaults (CSP nonce, CSRF same-origin check on unsafe methods, headers) are on unless disabled through
@@ -61,7 +74,11 @@ security defaults (CSP nonce, CSRF same-origin check on unsafe methods, headers)
   (`<gotsx-suspense>` + `<template data-gotsx-fill>`) is internal and may change.
 - `gotsx lsp` beyond diagnostics (hover, definition).
 - Client telemetry payload (`ClientEvent`) fields beyond `type` / `message` / `url`.
-- The dev live-reload protocol (`/_gotsx/dev`).
+- The dev live-reload protocol (`/_gotsx/dev`, incl. the `diag` event) and the error overlay markup.
+- The typed-action wire format (`POST /_gotsx/act/<module>/<name>`, JSON argument array, `{"ok","data"}` /
+  `{"error","fields"}` bodies, the `X-Gotsx-Action` header): only the compiled client stub and `gen.HostActions`
+  are expected to speak it.
+- The session cookie encoding (`gotsx_session`, base64 JSON + HMAC): rotate `SessionSecret` to invalidate.
 - `design/` (the demo design system) — it is a demo artifact, not a framework API.
 
 ### Internal — no guarantees

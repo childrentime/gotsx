@@ -1,9 +1,14 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { Suspense } from "gotsx";
 import { models } from "host:data";        // Go 实现: 编译后是直接的 Go 调用, 零编组
 import { fmtNumber } from "host:intl";
 import ModelCard from "../components/ModelCard.server";
 import Stats from "../components/Stats.server";
+
+/** Page metadata: the layout renders it (props.meta) into <title> / <meta name="description"> */
+export function meta(): Meta {
+  return { title: "Models", description: "A gotsx example: pages compiled to Go, islands compiled to signals." };
+}
 
 export default function Home({ query }: PageProps) {
   const q = query.q ?? "";

@@ -1,14 +1,22 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { get } from "host:orders";
 import Layout from "../../components/Layout.server";
 import Icon from "../../ui/Icon";
 
-export default function OrderDetail({ params, cookies, locale }: PageProps) {
+export function meta(props: PageProps): Meta {
+  const lc = props.locale !== "" ? props.locale : "en";
+  return { title: tv(lc, "order.title", { id: props.params.id }), noIndex: true };
+}
+
+export default function OrderDetail({ params, cookies, locale, path, flash }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   const sid = cookies.sid ?? "";
   const o = get(sid, params.id);
   return (
-    <Layout title={tv(lc, "order.title", { id: o.id })} sid={sid} locale={lc} active="orders" wide>
+    <Layout sid={sid} locale={lc} active="orders" wide path={path}>
+      {flash.map((f) => (
+        <div class={"alert alert-" + f.kind + " mb-5"} role="status">{f.text}</div>
+      ))}
       <div class="card mb-5 flex items-center gap-4 px-6 py-5">
         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success"><Icon name="check" className="h-5 w-5" /></span>
         <div>

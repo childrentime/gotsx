@@ -24,11 +24,14 @@ make check      # gotsx check on every demo app (what the LSP runs)
 make dev-shop   # dev server with live reload (dev-site / dev-admin / dev-example)
 make lint fmt   # go vet / gofmt
 go run ./cmd/gotsx tailwind   # once: Tailwind standalone binary into .tools/ (no Node)
+go run ./cmd/gotsx export site --base /gotsx --site https://childrentime.github.io   # static export of the docs site (what Pages deploys)
+go run ./cmd/gotsx docs conventions                                                 # the docs every scaffold gets in app/.gen/docs/
 python3 bench/run.py --duration 2   # benchmark harness smoke test only — published numbers come from the Benchmark workflow
 python3 bench/update_docs.py        # after the workflow committed bench/results/: rewrite the README tables
 ```
 
 A prebuilt CLI for parallel work: `go build -o .tools/gotsx-stable ./cmd/gotsx`, then `.tools/gotsx-stable build <app>`.
+The CLI embeds `client/*.js` and `cmd/gotsx/docs/*.md` at its own build time — rebuild it after touching either.
 
 ## Rules that keep the project coherent
 
@@ -45,10 +48,17 @@ A prebuilt CLI for parallel work: `go build -o .tools/gotsx-stable ./cmd/gotsx`,
 - **Security defaults stay on** (CSP nonce, CSRF same-origin, escaping everywhere); a demo may not disable them.
 - **Verify in a real browser** when touching the client runtime or a demo: Python Playwright is available
   (`from playwright.sync_api import sync_playwright`), use `bypass_csp=True` for Playwright's own helpers.
+- **The agent docs are part of the language.** `cmd/gotsx/docs/*.md` (written into every app's `app/.gen/docs/`
+  and printed by `gotsx docs`) and the managed block in `cmd/gotsx/agent.go` must change in the same commit as
+  the syntax, a file convention, a runtime API used from `main.go`, or a compiler error message. Islands talk to
+  Go only through typed actions (`Registry[...].Actions`); demos must not hand-write fetch handlers for islands.
+- **Dev state is a contract for tools**: `.gotsx/dev.json`, `.gotsx/diagnostics.json` and the `AGENTS.md`
+  block markers are listed in `STABILITY.md`; keep their shapes.
 
 ## Layout
 
-`compiler/` (lexer, parser, check, gogen, jsgen, compile, query) · `runtime/` (node model, HTTP, builtins,
-i18n, hostgen) · `client/` (signals runtime, loader) · `cmd/gotsx/` (CLI, LSP, scaffold) · `design/` (gotsx UI) ·
+`compiler/` (lexer, parser, check, gogen, jsgen, compile, actions, query) · `runtime/` (node model, HTTP, actions,
+sessions, builtins, i18n, hostgen) · `client/` (signals runtime, loader + dev overlay) · `cmd/gotsx/` (CLI, LSP,
+scaffold, export, dev state, agent docs) · `design/` (gotsx UI) ·
 `editors/` (LSP clients) · `bench/` (reproducible benchmarks vs other frameworks) · `example/ site/ shop/ admin/`
 (demo apps = integration tests; `example` has the language kitchen sink).

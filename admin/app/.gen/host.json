@@ -3,70 +3,38 @@
     "auth": {
       "go": "host.Auth",
       "members": {
-        "current": {
-          "kind": "method",
-          "go": "Current",
-          "params": [
-            {
-              "type": "string",
-              "go": "string"
-            }
-          ],
-          "ret": {
-            "type": "Session",
-            "go": "host.Session"
-          },
-          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 60
-        },
-        "isAuthed": {
-          "kind": "method",
-          "go": "IsAuthed",
-          "params": [
-            {
-              "type": "string",
-              "go": "string"
-            }
-          ],
-          "ret": {
-            "type": "boolean",
-            "go": "bool"
-          },
-          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 71
-        },
         "login": {
           "kind": "method",
           "go": "Login",
           "params": [
             {
+              "name": "user",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "pass",
               "type": "string",
               "go": "string"
             }
           ],
           "ret": {
-            "type": "string",
-            "go": "string"
+            "type": "Profile",
+            "go": "host.Profile"
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 39
+          "line": 38,
+          "action": true,
+          "req": true
         },
         "logout": {
           "kind": "method",
           "go": "Logout",
-          "params": [
-            {
-              "type": "string",
-              "go": "string"
-            }
-          ],
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 53
+          "line": 52,
+          "action": true,
+          "req": true
         }
       }
     },
@@ -81,7 +49,7 @@
             "go": "[]host.Stat"
           },
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 279
+          "line": 293
         },
         "recent": {
           "kind": "method",
@@ -91,7 +59,7 @@
             "go": "[]host.Activity"
           },
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 299
+          "line": 313
         }
       }
     },
@@ -105,58 +73,33 @@
             "type": "UserPage",
             "go": "host.UserPage"
           },
+          "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 172
+          "line": 171,
+          "action": true,
+          "req": true
         },
         "create": {
           "kind": "method",
           "go": "Create",
           "params": [
             {
+              "name": "name",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "email",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "role",
               "type": "string",
               "go": "string"
             },
             {
-              "type": "string",
-              "go": "string"
-            }
-          ],
-          "ret": {
-            "type": "User",
-            "go": "host.User"
-          },
-          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 218
-        },
-        "delete": {
-          "kind": "method",
-          "go": "Delete",
-          "params": [
-            {
-              "type": "string",
-              "go": "string"
-            }
-          ],
-          "ret": {
-            "type": "boolean",
-            "go": "bool"
-          },
-          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 255
-        },
-        "get": {
-          "kind": "method",
-          "go": "Get",
-          "params": [
-            {
+              "name": "dept",
               "type": "string",
               "go": "string"
             }
@@ -167,25 +110,49 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 180
+          "line": 221,
+          "action": true,
+          "req": true
+        },
+        "get": {
+          "kind": "method",
+          "go": "Get",
+          "params": [
+            {
+              "name": "id",
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "User",
+            "go": "host.User"
+          },
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 182
         },
         "query": {
           "kind": "method",
           "go": "Query",
           "params": [
             {
+              "name": "q",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "role",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "sortBy",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "page",
               "type": "number",
               "go": "int"
             }
@@ -195,33 +162,55 @@
             "go": "host.UserPage"
           },
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 122
+          "line": 120
+        },
+        "remove": {
+          "kind": "method",
+          "go": "Remove",
+          "params": [
+            {
+              "name": "id",
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 266,
+          "action": true,
+          "req": true
         },
         "update": {
           "kind": "method",
           "go": "Update",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "name",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "email",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "role",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "dept",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "status",
               "type": "string",
               "go": "string"
             }
@@ -230,8 +219,11 @@
             "type": "User",
             "go": "host.User"
           },
+          "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
-          "line": 234
+          "line": 241,
+          "action": true,
+          "req": true
         }
       }
     }
@@ -267,8 +259,8 @@
       ],
       "methods": {}
     },
-    "Session": {
-      "go": "host.Session",
+    "Profile": {
+      "go": "host.Profile",
       "fields": [
         {
           "name": "user",

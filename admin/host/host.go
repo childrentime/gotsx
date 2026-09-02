@@ -1,10 +1,9 @@
-// Package host is the admin demo's host module: auth sessions + a user directory (CRUD).
-// Writes (login / create / update / delete) are Go methods called from actions; the dialect only reads.
+// Package host is the admin demo's host module: sign-in on top of the framework session + a user directory (CRUD).
+// Writes (login / logout / create / update / remove) are typed actions: islands await them, the request layer
+// decodes the arguments and maps errors (gotsx.Invalid → 422 with field messages, ErrNotFound → 404).
 package host
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
@@ -25,54 +24,53 @@ type Account struct {
 }
 
 type AuthModule struct {
-	mu       sync.Mutex
 	accounts map[string]Account
-	sessions map[string]string // sid → user
 }
 
-type Session struct {
+// Profile: who is signed in (also what Login returns to the island)
+type Profile struct {
 	User string `json:"user"`
 	Name string `json:"name"`
 	Role string `json:"role"`
 }
 
-func (a *AuthModule) Login(user, pass string) (string, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// Login: action. Stores the profile in the signed session cookie; pages gate on props.session.user.
+func (a *AuthModule) Login(req *gotsx.Req, user, pass string) (Profile, error) {
 	acc, ok := a.accounts[strings.TrimSpace(strings.ToLower(user))]
 	if !ok || acc.Pass != pass {
-		return "", fmt.Errorf("wrong username or password")
+		return Profile{}, gotsx.Invalid(map[string]string{"password": "Wrong username or password"})
 	}
-	b := make([]byte, 16)
-	rand.Read(b)
-	sid := hex.EncodeToString(b)
-	a.sessions[sid] = acc.User
-	return sid, nil
+	sess := req.Session()
+	sess.Set("user", acc.User)
+	sess.Set("name", acc.Name)
+	sess.Set("role", acc.Role)
+	sess.Flash("ok", "Welcome back, "+acc.Name)
+	return Profile{User: acc.User, Name: acc.Name, Role: acc.Role}, nil
 }
 
-func (a *AuthModule) Logout(sid string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	delete(a.sessions, sid)
+// Logout: action. Clears the session; the flash queued after Clear shows on the sign-in page.
+func (a *AuthModule) Logout(req *gotsx.Req) {
+	sess := req.Session()
+	sess.Clear()
+	sess.Flash("info", "You have been signed out")
 }
 
-// Current: the signed-in session for the dialect (an empty Session when not signed in)
-func (a *AuthModule) Current(sid string) Session {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if u, ok := a.sessions[sid]; ok {
-		if acc, ok := a.accounts[u]; ok {
-			return Session{User: acc.User, Name: acc.Name, Role: acc.Role}
-		}
+// requireUser / requireEditor: authorization inside actions (gotsx.Fail → 400 with the message)
+func requireUser(req *gotsx.Req) error {
+	if req.Session().Get("user") == "" {
+		return gotsx.Unauthorized("not signed in")
 	}
-	return Session{}
+	return nil
 }
 
-func (a *AuthModule) IsAuthed(sid string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	_, ok := a.sessions[sid]
-	return ok
+func requireEditor(req *gotsx.Req) error {
+	if err := requireUser(req); err != nil {
+		return err
+	}
+	if role := req.Session().Get("role"); role != "admin" && role != "editor" {
+		return gotsx.Forbidden("your role cannot change users")
+	}
+	return nil
 }
 
 // ---------- user directory ----------
@@ -169,12 +167,16 @@ func (m *UsersModule) Query(q, role, sortBy string, page int) UserPage {
 	return UserPage{Items: items, Total: total, Page: page, Pages: pages, PageList: list, Active: active, Admins: admins}
 }
 
-func (m *UsersModule) All() UserPage {
+// All: action (read); the users table loads through it, so it needs a signed-in session
+func (m *UsersModule) All(req *gotsx.Req) (UserPage, error) {
+	if err := requireUser(req); err != nil {
+		return UserPage{}, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	active, admins := m.counts()
 	items := append([]User{}, m.list...)
-	return UserPage{Items: items, Total: len(items), Page: 1, Pages: 1, Active: active, Admins: admins}
+	return UserPage{Items: items, Total: len(items), Page: 1, Pages: 1, Active: active, Admins: admins}, nil
 }
 
 func (m *UsersModule) Get(id string) (User, error) {
@@ -215,11 +217,15 @@ func (m *UsersModule) validate(name, email, role, dept string, selfID string) ma
 	return errs
 }
 
-func (m *UsersModule) Create(name, email, role, dept string) (User, map[string]string) {
+// Create: action; validation errors reach the modal as e.fields (422)
+func (m *UsersModule) Create(req *gotsx.Req, name, email, role, dept string) (User, error) {
+	if err := requireEditor(req); err != nil {
+		return User{}, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if errs := m.validate(name, email, role, dept, ""); len(errs) > 0 {
-		return User{}, errs
+		return User{}, gotsx.Invalid(errs)
 	}
 	m.seq++
 	u := User{
@@ -231,11 +237,15 @@ func (m *UsersModule) Create(name, email, role, dept string) (User, map[string]s
 	return u, nil
 }
 
-func (m *UsersModule) Update(id, name, email, role, dept, status string) (User, map[string]string) {
+// Update: action
+func (m *UsersModule) Update(req *gotsx.Req, id, name, email, role, dept, status string) (User, error) {
+	if err := requireEditor(req); err != nil {
+		return User{}, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if errs := m.validate(name, email, role, dept, id); len(errs) > 0 {
-		return User{}, errs
+		return User{}, gotsx.Invalid(errs)
 	}
 	for i := range m.list {
 		if m.list[i].ID == id {
@@ -249,19 +259,23 @@ func (m *UsersModule) Update(id, name, email, role, dept, status string) (User, 
 			return m.list[i], nil
 		}
 	}
-	return User{}, map[string]string{"_": "User not found"}
+	return User{}, fmt.Errorf("%w: user %s", gotsx.ErrNotFound, id)
 }
 
-func (m *UsersModule) Delete(id string) bool {
+// Remove: action ("delete" is a reserved word in the dialect, so the method is Remove)
+func (m *UsersModule) Remove(req *gotsx.Req, id string) error {
+	if err := requireEditor(req); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i := range m.list {
 		if m.list[i].ID == id {
 			m.list = append(m.list[:i], m.list[i+1:]...)
-			return true
+			return nil
 		}
 	}
-	return false
+	return fmt.Errorf("%w: user %s", gotsx.ErrNotFound, id)
 }
 
 // ---------- dashboard stats ----------
@@ -309,7 +323,7 @@ func (StatsModule) Recent() []Activity {
 // ---------- seed data ----------
 
 var (
-	Auth  = &AuthModule{accounts: seedAccounts(), sessions: map[string]string{}}
+	Auth  = &AuthModule{accounts: seedAccounts()}
 	Users = &UsersModule{list: seedUsers()}
 	Stats = StatsModule{}
 )
@@ -319,12 +333,6 @@ func seedAccounts() map[string]Account {
 		"admin": {User: "admin", Pass: "admin123", Name: "Super Admin", Role: "admin"},
 		"demo":  {User: "demo", Pass: "demo", Name: "Demo Account", Role: "viewer"},
 	}
-}
-
-func NewSID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
 }
 
 func seedUsers() []User {
@@ -347,8 +355,9 @@ func seedUsers() []User {
 	return out
 }
 
+// Registry: Actions are the methods islands may call (POST /_gotsx/act/<module>/<name>)
 var Registry = map[string]gotsx.HostModule{
-	"auth":  {Value: Auth, Go: "host.Auth"},
-	"users": {Value: Users, Go: "host.Users"},
+	"auth":  {Value: Auth, Go: "host.Auth", Actions: []string{"Login", "Logout"}},
+	"users": {Value: Users, Go: "host.Users", Actions: []string{"All", "Create", "Update", "Remove"}},
 	"stats": {Value: Stats, Go: "host.Stats"},
 }

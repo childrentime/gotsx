@@ -35,7 +35,8 @@ type Checker struct {
 	mod         *Module
 	scope       *Scope
 	pageProps   *ObjT
-	layoutProps *ObjT  // _layout.server.tsx: PageProps + children
+	metaT       *ObjT  // export function meta(props): Meta
+	layoutProps *ObjT  // _layout.server.tsx: PageProps + meta + children
 	errorProps  *ObjT  // _error.server.tsx: PageProps + message
 	HostDTS     string // app/.gen/host.d.ts(编辑器跳转宿主类型用)
 }
@@ -74,17 +75,33 @@ func NewChecker(hostJSON []byte) (*Checker, error) {
 	for _, n := range []string{"document", "window", "location", "history", "navigator", "localStorage", "sessionStorage", "requestAnimationFrame", "Array"} {
 		c.global.syms[n] = &Symbol{Name: n, Kind: SBuiltin, Type: TAny}
 	}
+	flashT := &ObjT{Name: "Flash", GoName: "gotsx.Flash", Host: true, Fields: []*Field{
+		{Name: "kind", Go: "Kind", Type: TString},
+		{Name: "text", Go: "Text", Type: TString},
+	}}
 	c.pageProps = &ObjT{Name: "PageProps", GoName: "gotsx.PageProps", Fields: []*Field{
 		{Name: "params", Go: "Params", Type: &MapT{Val: TString}},
 		{Name: "query", Go: "Query", Type: &MapT{Val: TString}},
 		{Name: "path", Go: "Path", Type: TString},
 		{Name: "locale", Go: "Locale", Type: TString},
 		{Name: "cookies", Go: "Cookies", Type: &MapT{Val: TString}},
+		{Name: "session", Go: "Session", Type: &MapT{Val: TString}},
+		{Name: "flash", Go: "Flash", Type: &ArrT{Elem: flashT}},
+		{Name: "csrf", Go: "CSRF()", Type: TString}, // lazy method: the token / cookie are created only when read
 	}}
+	c.global.types["Flash"] = flashT
 	c.global.types["PageProps"] = c.pageProps
 	c.global.types["Node"] = TNode
+	c.metaT = &ObjT{Name: "Meta", GoName: "gotsx.Meta", Host: true, Fields: []*Field{
+		{Name: "title", Go: "Title", Type: TString, Optional: true},
+		{Name: "description", Go: "Description", Type: TString, Optional: true},
+		{Name: "canonical", Go: "Canonical", Type: TString, Optional: true},
+		{Name: "image", Go: "Image", Type: TString, Optional: true},
+		{Name: "noIndex", Go: "NoIndex", Type: TBool, Optional: true},
+	}}
+	c.global.types["Meta"] = c.metaT
 	c.layoutProps = &ObjT{Name: "LayoutProps", GoName: "gotsx.LayoutProps", Fields: append(append([]*Field{}, c.pageProps.Fields...),
-		&Field{Name: "children", Go: "Children", Type: TNode})}
+		&Field{Name: "meta", Go: "Meta", Type: c.metaT}, &Field{Name: "children", Go: "Children", Type: TNode})}
 	c.errorProps = &ObjT{Name: "ErrorProps", GoName: "gotsx.ErrorProps", Fields: append(append([]*Field{}, c.pageProps.Fields...),
 		&Field{Name: "message", Go: "Message", Type: TString})}
 	c.global.types["LayoutProps"] = c.layoutProps
@@ -124,11 +141,13 @@ type hostMemberJSON struct {
 	Kind   string `json:"kind"`
 	Go     string `json:"go"`
 	Type   string `json:"type"`
-	Params []struct{ Type, Go string }
+	Params []struct{ Name, Type, Go string }
 	Ret    *struct{ Type, Go string }
 	Throws bool
 	File   string `json:"file"`
 	Line   int    `json:"line"`
+	Action bool   `json:"action"`
+	Req    bool   `json:"req"`
 }
 
 func (c *Checker) loadHost(data []byte) error {
@@ -156,13 +175,13 @@ func (c *Checker) loadHost(data []byte) error {
 		return c.resolveType(te, Pos{})
 	}
 	mem := func(name string, mj *hostMemberJSON) *HostMember {
-		m := &HostMember{Name: name, Go: mj.Go, Kind: mj.Kind, Throws: mj.Throws, File: mj.File, Line: mj.Line}
+		m := &HostMember{Name: name, Go: mj.Go, Kind: mj.Kind, Throws: mj.Throws, File: mj.File, Line: mj.Line, Action: mj.Action, Req: mj.Req}
 		if mj.Kind == "field" {
 			m.Type = parseT(mj.Type)
 			return m
 		}
 		for _, p := range mj.Params {
-			m.Params = append(m.Params, HostParam{Type: parseT(p.Type), Go: p.Go})
+			m.Params = append(m.Params, HostParam{Name: p.Name, Type: parseT(p.Type), Go: p.Go})
 		}
 		if mj.Ret != nil {
 			m.Ret = parseT(mj.Ret.Type)
@@ -183,6 +202,7 @@ func (c *Checker) loadHost(data []byte) error {
 		hm := &HostModT{Name: name, Go: mj.Go, Members: map[string]*HostMember{}}
 		for mn, m := range mj.Members {
 			hm.Members[mn] = mem(mn, m)
+			hm.Members[mn].Mod = name
 		}
 		c.Host.Modules[name] = hm
 	}
@@ -306,27 +326,13 @@ func (c *Checker) importInto(m *Module, im *Import) {
 			switch n.Name {
 			case "useState", "useEffect", "useMemo", "emit", "on", "Suspense":
 				m.Scope.syms[n.Local] = c.global.syms[n.Name]
-			case "Node", "PageProps", "LayoutProps", "ErrorProps":
+			case "Node", "PageProps", "LayoutProps", "ErrorProps", "Meta", "Flash":
 				m.Scope.types[n.Local] = c.global.types[n.Name]
 			default:
 				c.errf(im.Pos, "module gotsx does not export %q", n.Name)
 			}
 		}
 	case strings.HasPrefix(im.From, "host:"):
-		if m.Kind == "client" {
-			typeOnly := im.TypeOnly
-			if !typeOnly {
-				typeOnly = len(im.Names) > 0
-				for _, n := range im.Names {
-					if !n.TypeOnly {
-						typeOnly = false
-					}
-				}
-			}
-			if !typeOnly {
-				c.fatal(im.Pos, "%q can only be imported by server components; client code may only `import type`", im.From)
-			}
-		}
 		name := strings.TrimPrefix(im.From, "host:")
 		hm, ok := c.Host.Modules[name]
 		if !ok {
@@ -340,6 +346,9 @@ func (c *Checker) importInto(m *Module, im *Import) {
 			mem, ok := hm.Members[n.Name]
 			if !ok {
 				c.fatal(im.Pos, "%s does not export %q", im.From, n.Name)
+			}
+			if m.Kind != "server" && !(mem.Kind == "method" && mem.Action) && !n.TypeOnly && !im.TypeOnly {
+				c.fatal(im.Pos, "%q: %s is not an action, so client code may only `import type` it (list it in the host module's Actions to call it from an island)", im.From, n.Name)
 			}
 			sym := &Symbol{Name: n.Local, Kind: SHostMember, Host: mem, Go: hm.Go + "." + mem.Go}
 			if mem.Kind == "field" {
@@ -425,7 +434,7 @@ func (c *Checker) declareTop(s Stmt) {
 		} else {
 			sym.Kind = SFunc
 			sym.Go = c.mod.GoPrefix + d.Name
-			if d.Export {
+			if d.Export && !underPages(c.mod) { // export function meta exists per page: keep the prefix
 				sym.Go = d.Name
 			}
 			sym.Type = c.fnType(d.Params, d.Ret, d.Async, d.Pos)
@@ -1287,7 +1296,13 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 		c.check(x.X, nil)
 		return c.resolveType(x.Type, x.Pos)
 	case *AwaitExpr:
-		c.check(x.X, nil)
+		t := c.check(x.X, nil)
+		if p, ok := t.(*PromiseT); ok {
+			if p.Elem == nil {
+				return TVoid
+			}
+			return p.Elem
+		}
 		return TAny
 	case *SpreadExpr:
 		return c.check(x.X, want)
@@ -1562,9 +1577,22 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 		x.Host = t.M
 		var params []*FnParam
 		for i, p := range t.M.Params {
-			params = append(params, &FnParam{Name: fmt.Sprintf("arg%d", i), Type: p.Type})
+			params = append(params, &FnParam{Name: hostParamName(p, i), Type: p.Type})
 		}
 		c.checkArgs(x, params)
+		if c.mod.Kind != "server" { // an action call inside an island: goes over HTTP, the result is a Promise
+			if !t.M.Action {
+				c.fatal(x.Pos, "%s is not an action; only actions can be called from client code", t.M.Name)
+			}
+			if fc := c.scope.fnCtx(); fc == nil || fc.component { // render is synchronous; any callback (handler, effect, arrow) may fire it
+				c.fatal(x.Pos, "actions return a Promise: call %s from an event handler or effect (await it inside an async function), not during render", t.M.Name)
+			}
+			x.Kind = "action"
+			return &PromiseT{Elem: t.M.Ret}
+		}
+		if t.M.Req {
+			c.fatal(x.Pos, "%s takes *gotsx.Req, so it can only be called from an island (as an action)", t.M.Name)
+		}
 		if t.M.Ret == nil {
 			return TVoid
 		}
@@ -2124,4 +2152,12 @@ func sanitizeIdent(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// hostParamName: the Go parameter name when hostgen could read it, else argN
+func hostParamName(p HostParam, i int) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return fmt.Sprintf("arg%d", i)
 }

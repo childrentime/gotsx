@@ -200,6 +200,31 @@ if (window.__GOTSX && window.__GOTSX.dev && typeof EventSource !== "undefined") 
     if (boot === null) boot = e.data;
     else if (e.data !== boot) { es.close(); location.reload(); }
   };
+  let overlay = null;
+  /* Compile-error overlay: gotsx dev writes .gotsx/diagnostics.json → the server sends an SSE `diag` event → drawn here; an empty object clears it */
+  es.addEventListener("diag", (e) => {
+    let d = {};
+    try { d = JSON.parse(e.data); } catch { /* ignore */ }
+    const old = document.getElementById("gotsx-overlay");
+    if (!d.errors || !d.errors.length) { if (old) old.remove(); return; }
+    const box = old || document.createElement("div");
+    box.id = "gotsx-overlay";
+    box.setAttribute("style", "position:fixed;inset:0;z-index:2147483647;background:rgba(9,9,11,.94);color:#fafafa;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;padding:32px;overflow:auto;box-sizing:border-box");
+    const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    box.innerHTML = '<div style="max-width:960px;margin:0 auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><strong style="font-size:15px;color:#f87171">' + esc(d.title || "gotsx: build failed") + '</strong><button id="gotsx-overlay-x" style="background:none;border:1px solid #3f3f46;color:#a1a1aa;border-radius:6px;padding:4px 10px;cursor:pointer">dismiss</button></div>' +
+      d.errors.map((x) => '<div style="margin:0 0 14px;padding:12px 14px;background:#18181b;border:1px solid #27272a;border-radius:8px"><div style="color:#a1a1aa;margin-bottom:4px">' + esc(x.file ? x.file + ":" + x.line + ":" + x.col : "") + '</div><div style="white-space:pre-wrap">' + esc(x.msg) + "</div></div>").join("") +
+      '<div style="color:#71717a;margin-top:8px">The previous build keeps serving; this overlay updates when the source is fixed.</div></div>';
+    if (!old) document.body.appendChild(box);
+    box.querySelector("#gotsx-overlay-x").onclick = () => { box.remove(); overlay = null; };
+    overlay = box;
+  });
+  /* SPA navigation morphs <body>: put the overlay back if a build is still failing */
+  document.addEventListener("gotsx:navigated", () => { if (overlay && !overlay.isConnected) document.body.appendChild(overlay); });
+  /* dev: console.error / console.warn also show up in the gotsx dev terminal */
+  for (const level of ["error", "warn"]) {
+    const orig = console[level].bind(console);
+    console[level] = (...a) => { orig(...a); try { report({ type: "console." + level, message: a.map((x) => (x instanceof Error ? x.message : typeof x === "string" ? x : JSON.stringify(x))).join(" ").slice(0, 2000), url: location.href }); } catch { /* ignore */ } };
+  }
 }
 
 reconcile();

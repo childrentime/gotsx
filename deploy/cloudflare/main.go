@@ -10,6 +10,7 @@ import (
 	gotsx "github.com/childrentime/gotsx/runtime"
 	"github.com/childrentime/gotsx/shop/server"
 	"github.com/syumai/workers"
+	"github.com/syumai/workers/cloudflare"
 )
 
 // public/ is copied from ../../shop/public by `make build` (go:embed cannot reach outside the package directory).
@@ -19,5 +20,10 @@ var publicEmbed embed.FS
 
 func main() {
 	public, _ := fs.Sub(publicEmbed, "public")
-	workers.Serve(gotsx.Handler(server.Options(false, public)))
+	opt := server.Options(false, public)
+	// Workers have no process environment: the session key comes from a Worker secret
+	// (`npx wrangler secret put SESSION_SECRET`). Without it every isolate signs with its own random key
+	// and sessions / flash messages do not survive across isolates.
+	opt.SessionSecret = cloudflare.Getenv("SESSION_SECRET")
+	workers.Serve(gotsx.Handler(opt))
 }

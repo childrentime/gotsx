@@ -93,6 +93,15 @@ func (d *DataModule) Stats() Stats {
 	return s
 }
 
+// Like is a typed action — an island does `import { like } from "host:data"` and then `await like(id)`;
+// the compiler generates both ends of POST /_gotsx/act/data/like (JSON decoding, same-origin and header checks, error mapping)
+func (d *DataModule) Like(id string) (int, error) {
+	if id == "" {
+		return 0, gotsx.Invalid(map[string]string{"id": "required"})
+	}
+	return d.Models.Like(id)
+}
+
 func (d *DataModule) Trending() []Model {
 	time.Sleep(300 * time.Millisecond)
 	all := d.Models.List()
@@ -135,7 +144,7 @@ var (
 
 // Registry: 模块名 → 值 + 生成代码里的 Go 表达式
 var Registry = map[string]gotsx.HostModule{
-	"data": {Value: Data, Go: "host.Data"},
+	"data": {Value: Data, Go: "host.Data", Actions: []string{"Like"}},
 	"intl": {Value: Intl, Go: "host.Intl"},
 }
 

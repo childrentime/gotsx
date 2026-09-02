@@ -1,5 +1,43 @@
 # 更新日志
 
+## 0.7.0 — Typed actions, sessions, page meta, agent-ready scaffolds, static export
+
+### Typed actions (islands → Go without hand-written HTTP)
+- `gotsx.HostModule.Actions` lists module-level Go methods islands may call. `hostgen` marks them in `host.d.ts` (`toggle(id: string): Promise<Todo>`, real parameter names read from the Go source) and `host.json`; the compiler lets islands value-import them from `host:*`, types `await` from the Go signature (`PromiseT`), compiles the call to `G.act("data", "toggle", [id])` and generates the server half in `gen/actions_gen.go` (`gen.HostActions`: JSON decoding by Go type, `*gotsx.Req` injection, `(T, error)` / `T` / `error` / void shapes).
+- Runtime: `Options.HostActions`, `POST /_gotsx/act/<module>/<name>` (same-origin + `X-Gotsx-Action` header unless `DisableCSRF`, 1 MB body, panics recovered, session auto-saved). Errors map to HTTP: `gotsx.Invalid(fields)` → 422 `{error, fields}`, `gotsx.Fail(msg)` → 400, `ErrNotFound` → 404, other → 500 (message only in dev). The client throws `Error` with `.status` / `.fields`. An action used as a value (`onClick={remove}`) becomes a posting function.
+- Guard rails: a server component may call an action only if it takes no `*gotsx.Req`; islands may still only `import type` non-action host members; an action may not be called in a component body (render is synchronous: call it from a handler or effect); `hostgen` fails loudly for unknown action names, `*gotsx.Req` outside the first parameter or on type methods, and Go types the dialect cannot represent (channels, funcs, non-empty interfaces). `gotsx.Unauthorized(msg)` (401) and `gotsx.Forbidden(msg)` (403) for authorization inside actions (`ValidationError.Status`).
+
+### Sessions, flash messages, CSRF tokens
+- Signed cookie sessions (`Options.SessionSecret`, HMAC-SHA256, HttpOnly, SameSite=Lax, 30-day default via `SessionMaxAge`; a random key per start when unset). `PageProps` gains `session` (read-only values), `flash` (one-shot `{kind, text}` messages, consumed on render) and `csrf` (a per-session token for classic forms).
+- `props.csrf` is lazy (`PageProps.CSRF()` behind the field): the token and the cookie are created only when a page reads it, so anonymous pages that don't use forms send no `Set-Cookie` and stay cacheable.
+- `gotsx.IsHTTPS(r)` (TLS, `X-Forwarded-Proto`, `Forwarded: proto=https`, Cloudflare `CF-Visitor`) decides the `Secure` flag of the session cookie; use it for your own cookies.
+- Go API: `gotsx.Req{W, R, Cookies, Locale}.Session()/SetCookie`, `Session.Get/Set/Delete/Clear/Flash/Values/CSRF/Save`, `gotsx.SessionOf(r)`, `gotsx.VerifyCSRF(r)` (`_csrf` field or `X-CSRF-Token`). `ValidationError.Error()` now lists the field messages, so a form handler can flash it directly.
+
+### Page meta
+- `export function meta(props?: PageProps): Meta` in a page (`Meta { title? description? canonical? image? noIndex? }`, importable from `"gotsx"`); the route table evaluates it once and passes it to every layout as `LayoutProps.meta`. Every exported function in `pages/` now gets the file-path Go prefix (no clashes between pages).
+
+### Developer experience
+- `gotsx dev` writes `.gotsx/dev.json` (`pid`, `port`, `url`, `started`) while running and removes it on exit (SIGINT/SIGTERM handled); a second `gotsx dev` for the same app prints the running one and exits 1.
+- A failed build writes `.gotsx/diagnostics.json` (`{title, errors: [{file,line,col,msg}], text}`, from the dialect checker or parsed from `go build` output); the dev server streams it over `/_gotsx/dev` as a `diag` SSE event and the loader draws a full-screen error overlay that clears itself when the build succeeds.
+- Dev mode forwards browser JS errors, unhandled rejections and `console.error` / `console.warn` to the terminal (`[browser] …`) — `/_gotsx/client-log` is always on in dev.
+- Keyed lists re-render an item whose object changed under the same key (`setItems(items.map(...))` now updates the row in place).
+- Island props: nil Go slices and maps are serialized as `[]` / `{}` (an island doing `initial.map(...)` no longer crashes on an empty host result); destructured parameters in plain functions (`meta({ params }: PageProps)`) now compile on the Go backend; builtin object types (`Meta`, `Flash`) no longer drag an unused `host` import into generated files.
+
+### Agent-ready scaffolds (Next.js-style `AGENTS.md`)
+- `gotsx new` writes `AGENTS.md` with a managed block (`<!-- BEGIN:gotsx-agent-rules --> … <!-- END:gotsx-agent-rules -->`) that says "this is not React/Next.js", points at the version-matched docs and states the rules that are always true, plus `CLAUDE.md` = `@AGENTS.md`. `gotsx build` / `dev` upgrade the block in place (user content outside it is untouched; a file is created only at a module root) and write `app/.gen/docs/{index,language,conventions,runtime,errors,agent-workflow}.md` for the CLI's own version. `gotsx docs [name]` prints them. The repository itself has an `AGENTS.md` pointing at `CLAUDE.md`.
+
+### Scaffold
+- New apps demonstrate everything above: `meta` on the index page, a CSRF-protected `<form method="post">` handled in Go with a flash message, an island whose toggle/remove are typed actions with error display, `HostActions` / `SessionSecret` wired in `main.go`. `--db sqlite` generates the same host on `modernc.org/sqlite` (pure Go, WAL, busy timeout, seeded on first run, `DATABASE_PATH`).
+- Design system: `.alert`, `.alert-ok/-error/-warning/-info` in both stylesheets.
+
+### `gotsx export`
+- `gotsx export [dir] --out dist --base /sub --site https://host [--routes …] [--port …]`: build, run the binary, crawl every same-origin link (hreflang alternates included, so every locale is exported), rewrite root-relative and absolute local URLs, copy `gen/client` → `_gotsx/` and `public/`, write `404.html` and `.nojekyll`. The Pages workflow and `scripts/export-site.sh` now use it (the old script left `hreflang` links pointing at localhost).
+
+### Demos
+- `example`: the Like button is a typed action (`DataModule.Like`), pages export `meta`, the layout renders it. `shop` and `admin` moved their island writes to typed actions, use sessions/flash where it fits and export `meta` per page.
+
+简要(中文): 类型化 action(岛直接 `await` Go 方法, 两端由编译器生成)、签名会话 / flash / CSRF token、页面 `meta` 约定、dev 错误浮层与 `.gotsx/dev.json` / `diagnostics.json`、浏览器错误转发到终端、`gotsx export` 静态导出、`--db sqlite` 脚手架、参考 Next.js 的 `AGENTS.md` 托管块与随版本走的 agent 文档(`app/.gen/docs/`, `gotsx docs`)。
+
 ## 0.6.1 — 流式代码生成(5× 吞吐)、基准测试、demo 英文优先
 
 ### 性能

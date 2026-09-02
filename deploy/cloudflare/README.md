@@ -23,3 +23,12 @@ For a persistent store, back the host module with D1 or KV — `syumai/workers` 
 Continuous deploy: `.github/workflows/deploy-cloudflare.yml` builds and publishes on every push that touches the
 shop; add the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets and set the repository variable
 `CLOUDFLARE_DEPLOY=true`.
+
+## Sessions on Workers
+
+The signed session cookie (flash messages after checkout, `props.session`) needs a fixed key shared by every isolate.
+Set it once as a Worker secret; without it each isolate signs with its own random key:
+
+```bash
+npx wrangler secret put SESSION_SECRET
+```

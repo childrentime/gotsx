@@ -15,17 +15,10 @@ function navCls(active: string, me: string): string {
     : "nav-link flex items-center gap-2.5 px-2.5 py-2";
 }
 
+/** Shell: the signed-in chrome (sidebar, header with the current profile, sign-out) around a page's content.
+ *  The document itself (<title> from meta, flash toasts) is pages/_layout.server.tsx. */
 export default function Shell({ title, active = "", name = "", role = "", children }: { title: string; active?: string; name?: string; role?: string; children?: Node }) {
   return (
-    <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{title} · gotsx admin</title>
-        <link rel="stylesheet" href="/public/tailwind.css" />
-      </head>
-      <body class="min-h-screen bg-background text-foreground">
-        <div id="gotsx-bar"></div>
         <div class="flex min-h-screen">
           <aside class="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border bg-background p-4 md:flex">
             <a href="/" class="mb-6 flex items-center gap-2.5 px-2">
@@ -64,7 +57,5 @@ export default function Shell({ title, active = "", name = "", role = "", childr
             <main class="fade-up flex-1 p-6">{children}</main>
           </div>
         </div>
-      </body>
-    </html>
   );
 }

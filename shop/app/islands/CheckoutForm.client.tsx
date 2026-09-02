@@ -1,4 +1,5 @@
 import { useState, emit } from "gotsx";
+import { place } from "host:orders";            // typed action: OrdersModule.Place (validation → 422 with fields)
 import Icon from "../ui/Icon";
 
 export default function CheckoutForm({ totalFmt, locale = "" }: { totalFmt: string; locale?: string }) {
@@ -9,13 +10,12 @@ export default function CheckoutForm({ totalFmt, locale = "" }: { totalFmt: stri
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setBusy(true);
-    const r = await fetch("/actions/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, phone, address }) });
-    const d = await r.json();
-    if (d.ok) {
+    try {
+      const o = await place(name, phone, address);
       emit("cart:changed", { count: 0 });
-      window.__gotsxNavigate("/orders/" + d.orderId);
-    } else {
-      setErrs(d.errors);
+      window.__gotsxNavigate("/orders/" + o.id);
+    } catch (e) {
+      setErrs(e.status === 422 ? e.fields : { _: e.message });   // field errors, or the empty-cart / server message
       setBusy(false);
     }
   };

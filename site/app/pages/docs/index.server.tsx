@@ -4,7 +4,7 @@ import Section from "../../components/Section.server";
 import CodeBlock from "../../ui/CodeBlock.server";
 import Callout from "../../ui/Callout";
 import { loc } from "../../ui/i18n";
-import { sampleRun, sampleLayout, sampleTSX, sampleIsland, sampleHost, sampleHostDTS, sampleAction, sampleTailwind } from "../../content/site.server";
+import { sampleRun, sampleLayout, sampleTSX, sampleIsland, sampleHost, sampleHostDTS, sampleAction, sampleActionIsland, sampleTailwind } from "../../content/site.server";
 
 export default function Docs({ locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
@@ -42,8 +42,10 @@ export default function Docs({ locale, path }: PageProps) {
         <p>{loc(lc, "After compilation, ", "编译后 ")}<code class="font-mono text-sm">models.search(q)</code>{loc(lc, " is just ", " 就是 ")}<code class="font-mono text-sm">host.Data.Models.Search(q)</code>{loc(lc, ": no marshalling, no reflection. Go's ", ": 没有编组, 没有反射。Go 的 ")}<code class="font-mono text-sm">int</code>{loc(lc, " and the dialect's ", " 和方言的 ")}<code class="font-mono text-sm">number</code>{loc(lc, " convert automatically; for a method returning error, the error becomes a panic recovered by the request layer, and one wrapping ", " 自动转换; 返回 error 的方法, error 变成 panic 由请求层 recover, 包了 ")}<code class="font-mono text-sm">gotsx.ErrNotFound</code>{loc(lc, " turns into a 404.", " 的回 404。")}</p>
       </Section>
 
-      <Section title={loc(lc, "6. From an island back to Go", "6. 从岛回到 Go")} lead={loc(lc, "An island reaches the server only over HTTP; an action is a plain handler", "岛只能通过 HTTP 回到服务端, 动作就是普通 handler")}>
-        <CodeBlock code={sampleAction} lang="go" title="main.go" />
+      <Section title={loc(lc, "6. From an island back to Go: typed actions", "6. 从岛回到 Go: 类型化 action")} lead={loc(lc, "List a Go method in Actions; the island imports it and awaits it — the compiler generates both halves of the HTTP call", "把 Go 方法列进 Actions, 岛里直接 import 并 await —— HTTP 调用的两端由编译器生成")}>
+        <CodeBlock code={sampleAction} lang="go" title="host/host.go" />
+        <CodeBlock code={sampleActionIsland} lang="tsx" title="app/islands/LikeButton.client.tsx" />
+        <p>{loc(lc, "Sessions, flash messages and CSRF tokens come with it: an action with a ", "会话、flash 消息和 CSRF token 一并提供: 带 ")}<code class="font-mono text-sm">*gotsx.Req</code>{loc(lc, " parameter can read and write the signed session; pages receive ", " 参数的 action 可以读写签名会话; 页面拿到 ")}<code class="font-mono text-sm">props.session</code>{loc(lc, ", ", "、")}<code class="font-mono text-sm">props.flash</code>{loc(lc, " and ", " 和 ")}<code class="font-mono text-sm">props.csrf</code>{loc(lc, " for classic forms. A page can also export ", "(给经典表单用)。页面还可以导出 ")}<code class="font-mono text-sm">meta(props): Meta</code>{loc(lc, " and the layout renders it into <head>.", ", 由布局渲染进 <head>。")}</p>
       </Section>
 
       <Section title={loc(lc, "7. Styling: Tailwind", "7. 样式: Tailwind")} lead={loc(lc, "If app/tailwind.css exists, the Tailwind standalone CLI runs on every build", "有 app/tailwind.css 就会在每次构建时跑 Tailwind standalone CLI")}>

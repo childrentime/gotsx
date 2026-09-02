@@ -1,15 +1,20 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { view } from "host:cart";
 import Layout from "../components/Layout.server";
 import Icon from "../ui/Icon";
 import CheckoutForm from "../islands/CheckoutForm.client";
 
-export default function Checkout({ cookies, locale }: PageProps) {
+export function meta(props: PageProps): Meta {
+  const lc = props.locale !== "" ? props.locale : "en";
+  return { title: t(lc, "checkout.title"), noIndex: true };
+}
+
+export default function Checkout({ cookies, locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   const sid = cookies.sid ?? "";
   const cv = view(sid);
   return (
-    <Layout title={t(lc, "checkout.title")} sid={sid} locale={lc} wide>
+    <Layout sid={sid} locale={lc} wide path={path}>
       <nav class="mb-5 flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="breadcrumb">
         <a href="/cart" class="transition-colors hover:text-foreground">{t(lc, "cart.title")}</a><Icon name="chevron-right" className="h-3 w-3" /><span class="text-foreground">{t(lc, "checkout.title")}</span>
       </nav>

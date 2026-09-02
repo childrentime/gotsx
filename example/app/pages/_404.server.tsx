@@ -1,6 +1,10 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 
 /** pages/_404.server.tsx → gen.NotFound(文件约定), 由根布局包住 */
+export function meta(): Meta {
+  return { title: "Not found", noIndex: true };
+}
+
 export default function NotFound({ path }: PageProps) {
   return (
     <div class="empty">

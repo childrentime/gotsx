@@ -18,7 +18,7 @@ func TestFence(t *testing.T) {
 	}{
 		{"客户端import宿主值", "c.client.tsx",
 			`import { models } from "host:data";
-export default function C() { return <b>{models.list().length}</b>; }`, "server components"},
+export default function C() { return <b>{models.list().length}</b>; }`, "not an action"},
 		{"客户端import服务端组件", "c.client.tsx",
 			`import X from "./page.server";
 export default function C() { return <X />; }`, "cannot find module"},

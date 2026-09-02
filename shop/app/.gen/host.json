@@ -8,18 +8,17 @@
           "go": "Add",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "variant",
               "type": "string",
               "go": "string"
             },
             {
-              "type": "string",
-              "go": "string"
-            },
-            {
+              "name": "qty",
               "type": "number",
               "go": "int"
             }
@@ -30,25 +29,26 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 308
+          "line": 342,
+          "action": true,
+          "req": true
         },
         "setQty": {
           "kind": "method",
           "go": "SetQty",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "variant",
               "type": "string",
               "go": "string"
             },
             {
-              "type": "string",
-              "go": "string"
-            },
-            {
+              "name": "qty",
               "type": "number",
               "go": "int"
             }
@@ -58,13 +58,16 @@
             "go": "host.CartView"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 346
+          "line": 382,
+          "action": true,
+          "req": true
         },
         "view": {
           "kind": "method",
           "go": "View",
           "params": [
             {
+              "name": "sid",
               "type": "string",
               "go": "string"
             }
@@ -74,7 +77,7 @@
             "go": "host.CartView"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 301
+          "line": 333
         }
       }
     },
@@ -86,6 +89,7 @@
           "go": "CatLabel",
           "params": [
             {
+              "name": "key",
               "type": "string",
               "go": "string"
             }
@@ -95,7 +99,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 125
+          "line": 145
         },
         "categories": {
           "kind": "method",
@@ -105,13 +109,31 @@
             "go": "[]host.Category"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 123
+          "line": 143
+        },
+        "count": {
+          "kind": "method",
+          "go": "Count",
+          "params": [
+            {
+              "name": "cat",
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "number",
+            "go": "int"
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 168
         },
         "feed": {
           "kind": "method",
           "go": "Feed",
           "params": [
             {
+              "name": "page",
               "type": "number",
               "go": "int"
             }
@@ -121,7 +143,8 @@
             "go": "host.FeedResult"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 673
+          "line": 732,
+          "action": true
         },
         "flash": {
           "kind": "method",
@@ -131,7 +154,7 @@
             "go": "[]host.Product"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 136
+          "line": 156
         },
         "flashCards": {
           "kind": "method",
@@ -141,7 +164,7 @@
             "go": "[]host.Card"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 661
+          "line": 720
         },
         "flashLeftMs": {
           "kind": "method",
@@ -151,13 +174,14 @@
             "go": "int"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 134
+          "line": 154
         },
         "get": {
           "kind": "method",
           "go": "Get",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             }
@@ -168,25 +192,29 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 146
+          "line": 178
         },
         "list": {
           "kind": "method",
           "go": "List",
           "params": [
             {
+              "name": "cat",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "q",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "sortBy",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "page",
               "type": "number",
               "go": "int"
             }
@@ -196,25 +224,29 @@
             "go": "host.Paged"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 156
+          "line": 188
         },
         "listCards": {
           "kind": "method",
           "go": "ListCards",
           "params": [
             {
+              "name": "cat",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "q",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "sortBy",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "page",
               "type": "number",
               "go": "int"
             }
@@ -224,13 +256,14 @@
             "go": "host.PagedCards"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 656
+          "line": 715
         },
         "productReviews": {
           "kind": "method",
           "go": "ProductReviews",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             }
@@ -240,13 +273,14 @@
             "go": "[]host.Review"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 215
+          "line": 247
         },
         "related": {
           "kind": "method",
           "go": "Related",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             }
@@ -256,7 +290,8 @@
             "go": "[]host.Card"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 694
+          "line": 753,
+          "action": true
         }
       }
     },
@@ -268,6 +303,7 @@
           "go": "FmtPrice",
           "params": [
             {
+              "name": "cents",
               "type": "number",
               "go": "int"
             }
@@ -277,13 +313,14 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 497
+          "line": 556
         },
         "fmtSold": {
           "kind": "method",
           "go": "FmtSold",
           "params": [
             {
+              "name": "n",
               "type": "number",
               "go": "int"
             }
@@ -293,7 +330,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 506
+          "line": 565
         }
       }
     },
@@ -305,10 +342,12 @@
           "go": "Get",
           "params": [
             {
+              "name": "sid",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             }
@@ -319,13 +358,14 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 424
+          "line": 463
         },
         "list": {
           "kind": "method",
           "go": "List",
           "params": [
             {
+              "name": "sid",
               "type": "string",
               "go": "string"
             }
@@ -335,25 +375,24 @@
             "go": "[]host.Order"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 414
+          "line": 453
         },
         "place": {
           "kind": "method",
           "go": "Place",
           "params": [
             {
+              "name": "name",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "phone",
               "type": "string",
               "go": "string"
             },
             {
-              "type": "string",
-              "go": "string"
-            },
-            {
+              "name": "address",
               "type": "string",
               "go": "string"
             }
@@ -364,7 +403,9 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 436
+          "line": 478,
+          "action": true,
+          "req": true
         }
       }
     },
@@ -379,7 +420,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 472
+          "line": 531
         },
         "name": {
           "kind": "method",
@@ -389,7 +430,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 471
+          "line": 530
         },
         "sitemapURLs": {
           "kind": "method",
@@ -399,13 +440,14 @@
             "go": "[]string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 484
+          "line": 543
         },
         "url": {
           "kind": "method",
           "go": "Url",
           "params": [
             {
+              "name": "path",
               "type": "string",
               "go": "string"
             }
@@ -415,7 +457,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 473
+          "line": 532
         }
       }
     },
@@ -427,6 +469,7 @@
           "go": "List",
           "params": [
             {
+              "name": "sid",
               "type": "string",
               "go": "string"
             }
@@ -436,17 +479,14 @@
             "go": "[]string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 376
+          "line": 413
         },
         "toggle": {
           "kind": "method",
           "go": "Toggle",
           "params": [
             {
-              "type": "string",
-              "go": "string"
-            },
-            {
+              "name": "id",
               "type": "string",
               "go": "string"
             }
@@ -456,7 +496,9 @@
             "go": "bool"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 388
+          "line": 426,
+          "action": true,
+          "req": true
         }
       }
     }

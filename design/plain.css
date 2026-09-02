@@ -73,6 +73,13 @@ footer.muted { text-align: center; padding: 32px 0; border-top: 1px solid var(--
 .badge-success { background: color-mix(in oklab, var(--success) 12%, transparent); color: var(--success); }
 .badge-warning { background: color-mix(in oklab, var(--warning) 12%, transparent); color: var(--warning); }
 .badge-destructive { background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }
+
+/* alerts: flash messages and inline errors (kinds match Session.Flash: ok | error | info | warning) */
+.alert { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 14px; background: var(--card); color: var(--foreground); }
+.alert-ok, .alert-success { border-color: color-mix(in oklab, var(--success) 40%, transparent); background: color-mix(in oklab, var(--success) 8%, transparent); color: var(--success); }
+.alert-error, .alert-destructive { border-color: color-mix(in oklab, var(--destructive) 40%, transparent); background: color-mix(in oklab, var(--destructive) 8%, transparent); color: var(--destructive); }
+.alert-warning { border-color: color-mix(in oklab, var(--warning) 40%, transparent); background: color-mix(in oklab, var(--warning) 8%, transparent); color: var(--warning); }
+.alert-info { background: var(--muted); color: var(--foreground); }
 .chip { cursor: pointer; border-radius: 999px; padding: 2px 10px; font: 12px var(--font-sans); border: 1px solid transparent; }
 .chip.on { background: var(--primary); color: var(--primary-foreground); }
 

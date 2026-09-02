@@ -1,14 +1,19 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { list } from "host:orders";
 import Layout from "../../components/Layout.server";
 import Icon from "../../ui/Icon";
 
-export default function OrdersPage({ cookies, locale }: PageProps) {
+export function meta(props: PageProps): Meta {
+  const lc = props.locale !== "" ? props.locale : "en";
+  return { title: t(lc, "orders.title"), noIndex: true };
+}
+
+export default function OrdersPage({ cookies, locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   const sid = cookies.sid ?? "";
   const orders = list(sid);
   return (
-    <Layout title={t(lc, "orders.title")} sid={sid} locale={lc} active="orders" wide>
+    <Layout sid={sid} locale={lc} active="orders" wide path={path}>
       <h1 class="mb-5 text-xl font-semibold tracking-tight">{t(lc, "orders.title")}</h1>
       {orders.length === 0 ? (
         <div class="card flex flex-col items-center py-24 text-center">

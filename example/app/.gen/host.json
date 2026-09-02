@@ -3,6 +3,25 @@
     "data": {
       "go": "host.Data",
       "members": {
+        "like": {
+          "kind": "method",
+          "go": "Like",
+          "params": [
+            {
+              "name": "id",
+              "type": "string",
+              "go": "string"
+            }
+          ],
+          "ret": {
+            "type": "number",
+            "go": "int"
+          },
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 98,
+          "action": true
+        },
         "models": {
           "kind": "field",
           "go": "Models",
@@ -26,7 +45,7 @@
             "go": "[]host.Model"
           },
           "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
-          "line": 96
+          "line": 105
         }
       }
     },
@@ -38,6 +57,7 @@
           "go": "FmtDate",
           "params": [
             {
+              "name": "iso",
               "type": "string",
               "go": "string"
             }
@@ -47,13 +67,14 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
-          "line": 120
+          "line": 129
         },
         "fmtNumber": {
           "kind": "method",
           "go": "FmtNumber",
           "params": [
             {
+              "name": "n",
               "type": "number",
               "go": "int"
             }
@@ -63,7 +84,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
-          "line": 108
+          "line": 117
         },
         "now": {
           "kind": "method",
@@ -73,7 +94,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
-          "line": 128
+          "line": 137
         }
       }
     }
@@ -136,6 +157,7 @@
           "go": "Get",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             }
@@ -153,6 +175,7 @@
           "go": "Like",
           "params": [
             {
+              "name": "id",
               "type": "string",
               "go": "string"
             }
@@ -180,6 +203,7 @@
           "go": "Search",
           "params": [
             {
+              "name": "q",
               "type": "string",
               "go": "string"
             }

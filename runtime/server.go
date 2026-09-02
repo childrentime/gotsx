@@ -1,6 +1,7 @@
 package gotsx
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/rand"
@@ -92,6 +93,11 @@ type Options struct {
 	OnClientEvent func(ClientEvent, *http.Request)
 	I18n          *I18n // 可选国际化: 语言解析 + 客户端目录注入 + hreflang
 	QuietLogs     bool  // 关掉每请求的访问日志(高吞吐服务或自带日志中间件时)
+
+	// ---- typed actions and sessions ----
+	HostActions   []HostAction  // gen.HostActions: host methods islands may call directly (POST /_gotsx/act/<module>/<name>)
+	SessionSecret string        // HMAC key for the session cookie; empty → a random key per start (sessions do not survive restarts)
+	SessionMaxAge time.Duration // lifetime of the session cookie (default 30 days)
 }
 
 // ClientEvent 是浏览器上报的一条遥测(错误 / 页面浏览)
@@ -104,11 +110,12 @@ type ClientEvent struct {
 }
 
 type server struct {
-	opt      Options
-	manifest string
-	loader   string
-	logURL   string
-	bootID   string // 每次进程启动不同: dev 模式下浏览器据此判断服务重启过 → 自动刷新
+	opt        Options
+	manifest   string
+	loader     string
+	logURL     string
+	bootID     string // 每次进程启动不同: dev 模式下浏览器据此判断服务重启过 → 自动刷新
+	autoSecret string // random key used when SessionSecret is empty
 }
 
 type ctxKey int
@@ -118,6 +125,7 @@ const (
 	ctxNonce
 	ctxLocale
 	ctxPath
+	ctxServer
 )
 
 // ---------- 启动 ----------
@@ -160,6 +168,12 @@ func Handler(opt Options) http.Handler {
 func newServer(opt Options) (http.Handler, *server) {
 	s := &server{opt: opt}
 	s.bootID = randomHex(6)
+	if opt.SessionSecret == "" {
+		s.autoSecret = randomHex(32)
+		if len(opt.HostActions) > 0 || opt.Dev {
+			log.Printf("gotsx: Options.SessionSecret is empty: sessions, flash messages and CSRF tokens will not survive a restart (set SESSION_SECRET in production)")
+		}
+	}
 	configureI18n(opt.I18n)
 	s.scanClient()
 	s.opt.Routes = sortRoutes(opt.Routes)
@@ -175,7 +189,17 @@ func newServer(opt Options) (http.Handler, *server) {
 	for pattern, h := range opt.Actions {
 		mux.HandleFunc(pattern, s.csrfGuard(pattern, h))
 	}
-	if opt.OnClientEvent != nil {
+	if len(opt.HostActions) > 0 {
+		acts := map[string]HostAction{}
+		for _, a := range opt.HostActions {
+			if _, dup := acts[a.Module+"/"+a.Name]; dup {
+				log.Printf("gotsx: duplicate action %s/%s in Options.HostActions (the last one wins)", a.Module, a.Name)
+			}
+			acts[a.Module+"/"+a.Name] = a
+		}
+		mux.HandleFunc("POST "+actionPrefix, s.actionHandler(acts))
+	}
+	if opt.OnClientEvent != nil || opt.Dev {
 		mux.HandleFunc("POST /_gotsx/client-log", func(w http.ResponseWriter, r *http.Request) {
 			if !SameOrigin(r) { // 仅同源上报
 				w.WriteHeader(http.StatusNoContent)
@@ -183,7 +207,18 @@ func newServer(opt Options) (http.Handler, *server) {
 			}
 			var ev ClientEvent
 			json.NewDecoder(io.LimitReader(r.Body, 16*1024)).Decode(&ev)
-			s.opt.OnClientEvent(ev, r)
+			if s.opt.OnClientEvent != nil {
+				s.opt.OnClientEvent(ev, r)
+			} else if ev.Type != "pageview" { // dev: browser errors / console.error show up in the terminal
+				msg := ev.Message
+				if ev.Stack != "" {
+					if i := strings.Index(ev.Stack, "\n"); i > 0 {
+						msg += "  " + strings.TrimSpace(strings.SplitN(ev.Stack, "\n", 3)[1])
+					}
+				}
+				clean := strings.NewReplacer("\n", " ", "\r", " ")
+				log.Printf("[browser] %s: %s (%s)", clean.Replace(ev.Type), clean.Replace(msg), clean.Replace(ev.URL))
+			}
 			w.WriteHeader(http.StatusNoContent)
 		})
 		s.logURL = "/_gotsx/client-log"
@@ -215,7 +250,15 @@ func newServer(opt Options) (http.Handler, *server) {
 		h = accessLogMW(h)
 	}
 	h = requestIDMW(h)
+	h = s.serverCtxMW(h)
 	return h, s
+}
+
+// serverCtxMW puts the server into the request context (so SessionOf / VerifyCSRF work from plain handlers too)
+func (s *server) serverCtxMW(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxServer, s)))
+	})
 }
 
 func Serve(opt Options) error {
@@ -304,13 +347,44 @@ func (s *server) devEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	http.NewResponseController(w).SetWriteDeadline(time.Time{}) // 长连接: 关掉本响应的写超时
 	fmt.Fprintf(w, "retry: 300\ndata: %s\n\n", s.bootID)
+	// gotsx dev writes compile errors to .gotsx/diagnostics.json (removed on success); watch it here and push changes to the browser's error overlay
+	diagPath := filepath.Join(".gotsx", "diagnostics.json")
+	var diagSeen time.Time
+	pushDiag := func() bool {
+		st, err := os.Stat(diagPath)
+		switch {
+		case err != nil && diagSeen.IsZero():
+			return true
+		case err != nil:
+			diagSeen = time.Time{}
+			_, werr := fmt.Fprintf(w, "event: diag\ndata: {}\n\n")
+			return werr == nil
+		case st.ModTime().Equal(diagSeen):
+			return true
+		}
+		diagSeen = st.ModTime()
+		raw, err := os.ReadFile(diagPath)
+		if err != nil || !json.Valid(raw) {
+			return true
+		}
+		_, werr := fmt.Fprintf(w, "event: diag\ndata: %s\n\n", bytes.ReplaceAll(raw, []byte("\n"), []byte(" ")))
+		return werr == nil
+	}
+	pushDiag()
 	fl.Flush()
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
+	poll := time.NewTicker(500 * time.Millisecond)
+	defer poll.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-poll.C:
+			if !pushDiag() {
+				return
+			}
+			fl.Flush()
 		case <-tick.C:
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", s.bootID); err != nil {
 				return
@@ -617,6 +691,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request) {
 		props.Locale = locale
 		props.Path = path
 	}
+	sess := s.attachSession(&props, r)
 	if s.opt.Before != nil {
 		s.opt.Before(w, r, props.Cookies)
 	}
@@ -645,6 +720,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Server-Timing", "go;dur="+strconv.FormatFloat(float64(us)/1000, 'f', 3, 64))
+	sess.save(w, r) // consumed flashes / a CSRF token generated during render are written back before the body (no Set-Cookie when unchanged)
 	s.writeHTML(w, http.StatusOK, html)
 	if len(pending) > 0 {
 		s.streamPending(w, r, pending, &seq)
@@ -747,6 +823,20 @@ func (s *server) streamPending(w http.ResponseWriter, r *http.Request, pending [
 	}
 }
 
+// attachSession: session values, the lazy CSRF token and the (consumed) flash messages for a page render.
+// The caller saves the session before writing the response.
+func (s *server) attachSession(props *PageProps, r *http.Request) *Session {
+	sess := s.loadSession(r)
+	props.Session = sess.Values()
+	props.csrf = func() string { return sess.CSRF() } // generated lazily; saved once after rendering
+	if len(sess.data.Flash) > 0 {
+		props.Flash = sess.data.Flash
+		sess.data.Flash = nil
+		sess.modified = true
+	}
+	return sess
+}
+
 func (s *server) propsFor(r *http.Request, params map[string]string) PageProps {
 	if params == nil {
 		params = map[string]string{}
@@ -821,7 +911,9 @@ func (s *server) injectFor(r *http.Request) string {
 
 func (s *server) serve404(w http.ResponseWriter, r *http.Request, props PageProps) {
 	if s.opt.NotFound != nil {
+		sess := s.attachSession(&props, r)
 		if html, err := s.render(func() Node { return s.opt.NotFound(props) }); err == nil {
+			sess.save(w, r) // a consumed flash / a token generated by the 404 page must reach the cookie too
 			s.writeDoc(w, r, http.StatusNotFound, html)
 			return
 		}
@@ -839,7 +931,11 @@ func (s *server) serveError(w http.ResponseWriter, r *http.Request, status int, 
 	}
 	if s.opt.ErrorPage != nil {
 		props := s.propsFor(r, nil)
+		sess := s.loadSession(r) // error pages see the session (for the header chrome) but do not consume flashes
+		props.Session = sess.Values()
+		props.csrf = func() string { return sess.CSRF() }
 		if html, err := s.render(func() Node { return s.opt.ErrorPage(props, shown) }); err == nil {
+			sess.save(w, r)
 			s.writeDoc(w, r, status, html)
 			return
 		}

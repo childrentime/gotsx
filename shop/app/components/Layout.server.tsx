@@ -1,43 +1,21 @@
 import type { Node } from "gotsx";
 import { categories } from "host:catalog";
 import { view } from "host:cart";
-import { url } from "host:site";
 import CartBadge from "../islands/CartBadge.client";
 import LocaleSwitch from "../islands/LocaleSwitch.client";
 import Icon from "../ui/Icon";
 
-export default function Layout({ title, sid, active = "", q = "", wide = false, desc = "", path = "", image = "", ld = "", ogType = "website", locale = "en", children }: { title: string; sid: string; active?: string; q?: string; wide?: boolean; desc?: string; path?: string; image?: string; ld?: string; ogType?: string; locale?: string; children?: Node }) {
+// The store chrome (service bar, header with search and cart, category nav, footer) around a page's content.
+// The document itself — <html>, <head> from the page meta — is pages/_layout.server.tsx.
+export default function Layout({ sid, active = "", q = "", wide = false, locale = "en", path = "", children }: { sid: string; active?: string; q?: string; wide?: boolean; locale?: string; path?: string; children?: Node }) {
   const lc = locale !== "" ? locale : "en";
-  const d = desc !== "" ? desc : t(lc, "meta.description");
   const cart = view(sid);
   const cats = categories();
   const container = wide ? "mx-auto w-full max-w-[1200px] px-6" : "container-page";
   const other = lc === "en" ? "zh" : "en";
   const navCls = (on: boolean) => (on ? "nav-link-active shrink-0" : "nav-link shrink-0");
   return (
-    <html lang={lc}>
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#ffffff" />
-        <link rel="manifest" href="/manifest.webmanifest" />
-        <link rel="icon" href="/icon.svg" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
-        <title>{title} · gomu</title>
-        <meta name="description" content={d} />
-        <link rel="canonical" href={url(lpath(lc, path))} />
-        <meta property="og:site_name" content="gomu" />
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={d} />
-        <meta property="og:type" content={ogType} />
-        <meta property="og:url" content={url(lpath(lc, path))} />
-        {image !== "" && <meta property="og:image" content={image} />}
-        <meta name="twitter:card" content="summary_large_image" />
-        <link rel="stylesheet" href="/public/tailwind.css" />
-        {ld !== "" && jsonLd(ld)}
-      </head>
-      <body class="min-h-screen">
-        <div id="gotsx-bar"></div>
+    <>
         <div class="border-b border-border bg-muted/40 text-xs text-muted-foreground">
           <div class={`${container} flex h-8 items-center gap-4`}>
             <div class="flex flex-1 items-center gap-5 overflow-hidden whitespace-nowrap">
@@ -103,7 +81,6 @@ export default function Layout({ title, sid, active = "", q = "", wide = false, 
           </div>
           <div class="border-t border-border py-5 text-center text-xs text-muted-foreground">© 2026 gomu · built with gotsx</div>
         </footer>
-      </body>
-    </html>
+    </>
   );
 }

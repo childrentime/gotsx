@@ -49,15 +49,18 @@ export function syntaxRows(locale: string): Row[] {
   return [
     { cat: c("module"), syntax: "import X from \"./a\"", note: loc(locale, "default import; extensions .tsx / .server.tsx / .client.tsx may be omitted", "默认导入; 路径可省 .tsx / .server.tsx / .client.tsx"), ok: true },
     { cat: c("module"), syntax: "import { a, b as c } from \"./a\"", note: loc(locale, "named imports", "命名导入"), ok: true },
-    { cat: c("module"), syntax: "import type { T } from \"./a\"", note: loc(locale, "type import; client code may only import type from host:*", "类型导入; 客户端对 host:* 只允许 import type"), ok: true },
+    { cat: c("module"), syntax: "import type { T } from \"./a\"", note: loc(locale, "type import; client code may only import type from host:* (except actions)", "类型导入; 客户端对 host:* 只允许 import type(action 除外)"), ok: true },
     { cat: c("module"), syntax: "import { useState, useEffect, useMemo } from \"gotsx\"", note: loc(locale, "hooks", "hooks"), ok: true },
-    { cat: c("module"), syntax: "import type { Node, PageProps } from \"gotsx\"", note: loc(locale, "framework types", "框架类型"), ok: true },
-    { cat: c("module"), syntax: "import { x } from \"host:name\"", note: loc(locale, "host module, server only; compiles to a direct Go call", "宿主模块, 仅服务端; 编译成直接 Go 调用"), ok: true },
+    { cat: c("module"), syntax: "import type { Node, PageProps, LayoutProps, Meta, Flash } from \"gotsx\"", note: loc(locale, "framework types", "框架类型"), ok: true },
+    { cat: c("module"), syntax: "import { x } from \"host:name\"", note: loc(locale, "host module in a server component: compiles to a direct Go call", "服务端组件里的宿主模块: 编译成直接 Go 调用"), ok: true },
+    { cat: c("module"), syntax: "import { toggle } from \"host:name\" (island) → await toggle(id)", note: loc(locale, "typed action: a Go method listed in Registry[...].Actions; the call is a same-origin POST typed Promise<T> from the Go signature; errors throw with .status / .fields", "类型化 action: Registry[...].Actions 里的 Go 方法; 调用是同源 POST, 类型 Promise<T> 来自 Go 签名; 失败抛出带 .status / .fields 的 Error"), ok: true },
+    { cat: c("module"), syntax: "export function meta(props?: PageProps): Meta", note: loc(locale, "page metadata (title, description, canonical, image, noIndex), evaluated once per request and handed to every layout as props.meta", "页面元数据(title / description / canonical / image / noIndex), 每请求算一次, 每层布局通过 props.meta 拿到"), ok: true },
+    { cat: c("module"), syntax: "props.session / props.flash / props.csrf", note: loc(locale, "PageProps: signed-session values (read-only), one-shot flash messages, the CSRF token for classic <form method=\"post\">", "PageProps: 签名会话的键值(只读)、一次性 flash 消息、经典表单用的 CSRF token"), ok: true },
     { cat: c("module"), syntax: "export default function / export function", note: loc(locale, "component (capitalized) or plain function", "组件(大写)或普通函数"), ok: true },
     { cat: c("module"), syntax: "export const data: T[] = [...]", note: loc(locale, "module-level const → Go package var; no let", "模块级 const → Go 包级变量; 不允许 let"), ok: true },
     { cat: c("module"), syntax: "export interface / export type", note: loc(locale, "type export (all types can be import type'd)", "类型导出(所有类型自动可被 import type)"), ok: true },
     { cat: c("module"), syntax: "pages/a/[id].server.tsx / pages/docs/[...slug].server.tsx", note: loc(locale, "file routing: params.id; catch-all params.slug = \"x/y/z\"; more specific routes win", "文件路由: params.id; catch-all 的 params.slug = \"x/y/z\"; 更具体的路由优先"), ok: true },
-    { cat: c("module"), syntax: "pages/**/_layout.server.tsx / _404 / _error", note: loc(locale, "nested layouts (LayoutProps = PageProps + children, outer layouts wrap inner ones); _404 → gen.NotFound, _error (ErrorProps) → gen.ErrorPage", "嵌套布局(LayoutProps = PageProps + children, 外层包内层); _404 → gen.NotFound, _error(ErrorProps)→ gen.ErrorPage"), ok: true },
+    { cat: c("module"), syntax: "pages/**/_layout.server.tsx / _404 / _error", note: loc(locale, "nested layouts (LayoutProps = PageProps + meta + children, outer layouts wrap inner ones); _404 → gen.NotFound, _error (ErrorProps) → gen.ErrorPage", "嵌套布局(LayoutProps = PageProps + meta + children, 外层包内层); _404 → gen.NotFound, _error(ErrorProps)→ gen.ErrorPage"), ok: true },
     { cat: c("module"), syntax: "import { Suspense } from \"gotsx\"", note: loc(locale, "streaming boundary (server only): <Suspense fallback={…}> ships the fallback with the shell, children render in their own goroutine and stream in", "流式边界(仅服务端): <Suspense fallback={…}> 随外壳先发 fallback, children 在自己的 goroutine 里渲染后流式填入"), ok: true },
     { cat: c("module"), syntax: "import * as ns from", note: loc(locale, "namespace import", "命名空间导入"), ok: false },
     { cat: c("stmt"), syntax: "const x = ... / let x = ...", note: loc(locale, "single declaration; type annotated or inferred", "单声明; 类型可标注可推断"), ok: true },
@@ -244,13 +247,23 @@ export const sampleLayout = `hello/
 ├── public/              # static files → /public/*
 └── gen/                 # generated output: *_gen.go, routes_gen.go, client/*.js`;
 
-export const sampleAction = `// an island's channel back to Go is HTTP: an action is a plain handler
-Actions: map[string]http.HandlerFunc{
-	"POST /actions/like": func(w http.ResponseWriter, r *http.Request) {
-		n, err := host.Data.Models.Like(r.URL.Query().Get("id"))
-		…
-	},
+export const sampleAction = `// host/host.go — list the methods islands may call; hostgen types them as Promise<T>
+func (d *DataModule) Like(id string) (int, error) { return d.Models.Like(id) }
+func (d *DataModule) Rename(req *gotsx.Req, id, title string) error { … } // *gotsx.Req: session / cookies
+
+var Registry = map[string]gotsx.HostModule{
+	"data": {Value: Data, Go: "host.Data", Actions: []string{"Like", "Rename"}},
 }`;
+
+export const sampleActionIsland = `// app/islands/LikeButton.client.tsx — a typed action: no fetch, no untyped JSON
+import { like } from "host:data";              // like(id: string): Promise<number>
+
+export default function LikeButton({ id, likes }: { id: string; likes: number }) {
+  const [n, setN] = useState(likes);
+  return <button onClick={async () => setN(await like(id))}>{n}</button>;
+}
+// main.go: gotsx.Options{HostActions: gen.HostActions, …}
+// errors: gotsx.Invalid(fields) → 422 (e.fields), gotsx.ErrNotFound → 404, else 500 — the call throws an Error with e.status`;
 
 export const sampleButton = `import type { Node } from "gotsx";
 

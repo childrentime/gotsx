@@ -1,4 +1,5 @@
 import { useState, useEffect, on, emit } from "gotsx";
+import { all as listUsers, remove } from "host:users";   // typed actions: UsersModule.All / Remove (session-checked in Go)
 import type { User } from "host:users";
 import Badge from "../ui/Badge";
 import Avatar from "../ui/Avatar";
@@ -19,9 +20,8 @@ export default function UsersTable({ canEdit }: { canEdit: boolean }) {
 
   const load = async () => {
     setLoading(true);
-    const r = await fetch("/api/users");
-    const d = await r.json();
-    setAll(d.items as User[]);
+    const d = await listUsers();                   // Promise<UserPage>, typed from Go
+    setAll(d.items);
     setActive(d.active);
     setAdmins(d.admins);
     setLoading(false);
@@ -50,14 +50,14 @@ export default function UsersTable({ canEdit }: { canEdit: boolean }) {
   const del = async (u: User) => {
     if (!window.confirm(`Delete user “${u.name}”?`)) return;
     setDeleting(u.id);
-    const r = await fetch("/users/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id }) });
-    const d = await r.json();
-    setDeleting("");
-    if (d.ok) {
+    try {
+      await remove(u.id);
       emit("admin:toast", { msg: "User deleted", kind: "ok" });
       load();
-    } else {
-      emit("admin:toast", { msg: "Delete failed", kind: "err" });
+    } catch (e) {
+      emit("admin:toast", { msg: "Delete failed: " + e.message, kind: "error" });
+    } finally {
+      setDeleting("");
     }
   };
 

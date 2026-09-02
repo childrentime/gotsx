@@ -2,23 +2,16 @@ import type { LayoutProps } from "gotsx";
 import { now } from "host:intl";
 import Counter from "../islands/Counter.client";
 
-/** 根布局(文件约定): pages/ 下每个页面都被它包住; props 是 PageProps + children */
-function titleOf(path: string): string {
-  if (path === "/") return "Models";
-  if (path.startsWith("/models/")) return "Model";
-  if (path === "/kitchen") return "Kitchen sink";
-  if (path.startsWith("/docs")) return "Docs";
-  return "gotsx";
-}
-
-export default function Root({ path, children }: LayoutProps) {
+/** Root layout (file convention): wraps every page under pages/; props are PageProps + meta (the page's export function meta) + children */
+export default function Root({ path, meta, children }: LayoutProps) {
   const nav = (href: string, on: boolean) => (on ? "nav-link nav-link-active" : "nav-link");
   return (
     <html lang="en" class="">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{titleOf(path)} · gotsx example</title>
+        <title>{meta.title ? meta.title + " · gotsx example" : "gotsx example"}</title>
+        {meta.description && <meta name="description" content={meta.description} />}
         <link rel="stylesheet" href="/public/app.css" />
       </head>
       <body>

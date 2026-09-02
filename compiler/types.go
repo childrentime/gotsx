@@ -92,6 +92,16 @@ type OptT struct{ Elem Type }
 
 func (t *OptT) String() string { return t.Elem.String() + " | undefined" }
 
+// PromiseT: the result type of an action call (await toggle(id) inside an island)
+type PromiseT struct{ Elem Type }
+
+func (t *PromiseT) String() string {
+	if t.Elem == nil {
+		return "Promise<void>"
+	}
+	return "Promise<" + t.Elem.String() + ">"
+}
+
 type SetterT struct{ Elem Type }
 
 func (t *SetterT) String() string { return "Setter<" + t.Elem.String() + ">" }
@@ -107,6 +117,7 @@ func (t *CompT) String() string { return "Component<" + t.Name + ">" }
 
 // 宿主
 type HostParam struct {
+	Name string // Go parameter name from the source (hostgen); "" when unknown
 	Type Type
 	Go   string
 }
@@ -121,6 +132,9 @@ type HostMember struct {
 	Throws bool
 	File   string // 方法的 Go 源码位置(hostgen 反射得到; 字段没有)
 	Line   int
+	Action bool   // callable from islands
+	Req    bool   // the first Go parameter is *gotsx.Req (injected by the runtime)
+	Mod    string // owning host module name (used in the action URL)
 }
 type HostFnT struct{ M *HostMember }
 

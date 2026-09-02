@@ -5,6 +5,9 @@ package gotsx
 import (
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"reflect"
 	goruntime "runtime"
 	"sort"
@@ -13,8 +16,9 @@ import (
 )
 
 type HostModule struct {
-	Value any    // 模块值(结构体指针或值)
-	Go    string // 生成代码里引用它的 Go 表达式, 如 "host.Data"
+	Value   any      // 模块值(结构体指针或值)
+	Go      string   // 生成代码里引用它的 Go 表达式, 如 "host.Data"
+	Actions []string // method names (Go names, e.g. "Toggle") islands may call directly: the compiler generates the typed client stub and the server route
 }
 
 type HostJSON struct {
@@ -34,10 +38,13 @@ type HostMemberJSON struct {
 	Throws bool            `json:"throws,omitempty"`
 	File   string          `json:"file,omitempty"` // 方法的 Go 源码位置(编辑器跳转用)
 	Line   int             `json:"line,omitempty"`
+	Action bool            `json:"action,omitempty"` // callable from islands (POST /_gotsx/act/<module>/<name>)
+	Req    bool            `json:"req,omitempty"`    // the first parameter is *gotsx.Req (injected by the runtime, absent from the TS signature)
 }
 type HostParamJSON struct {
-	Type string `json:"type"` // TS 类型
-	Go   string `json:"go"`   // Go 类型(用于数字转换)
+	Name string `json:"name,omitempty"` // parameter name from the Go source (when the source is available)
+	Type string `json:"type"`           // TS 类型
+	Go   string `json:"go"`             // Go 类型(用于数字转换)
 }
 type HostTypeJSON struct {
 	Go      string                     `json:"go"`
@@ -52,6 +59,8 @@ type HostFieldJSON struct {
 }
 
 type hostGen struct {
+	fset  *token.FileSet
+	files map[string]*ast.File
 	pkg   string // Go 包别名, 如 "host"
 	types map[string]*HostTypeJSON
 	order []string
@@ -59,7 +68,7 @@ type hostGen struct {
 
 // GenerateHost 返回 (host.d.ts, host.json)
 func GenerateHost(reg map[string]HostModule, pkgAlias string) (string, string) {
-	g := &hostGen{pkg: pkgAlias, types: map[string]*HostTypeJSON{}}
+	g := &hostGen{pkg: pkgAlias, types: map[string]*HostTypeJSON{}, fset: token.NewFileSet()}
 	out := &HostJSON{Modules: map[string]*HostModJSON{}, Types: g.types}
 	names := make([]string, 0, len(reg))
 	for n := range reg {
@@ -73,12 +82,27 @@ func GenerateHost(reg map[string]HostModule, pkgAlias string) (string, string) {
 		mj := &HostModJSON{Go: m.Go, Members: map[string]*HostMemberJSON{}}
 		t := reflect.TypeOf(m.Value)
 		fmt.Fprintf(&dts, "declare module \"host:%s\" {\n", name)
+		actions := map[string]bool{}
+		for _, a := range m.Actions {
+			actions[a] = true
+		}
 		for i := 0; i < t.NumMethod(); i++ {
 			meth := t.Method(i)
 			mem := g.method(meth.Type, meth.Name)
 			mem.File, mem.Line = funcPos(t, meth)
+			g.nameParams(mem)
+			mem.Action = actions[meth.Name]
 			mj.Members[lcFirst(meth.Name)] = mem
-			fmt.Fprintf(&dts, "  export function %s%s;\n", lcFirst(meth.Name), g.sig(mem))
+			if mem.Action {
+				fmt.Fprintf(&dts, "  /** action: callable from islands (POST, same-origin); throws on a validation error */\n  export function %s%s;\n", lcFirst(meth.Name), g.asyncSig(mem))
+			} else {
+				fmt.Fprintf(&dts, "  export function %s%s;\n", lcFirst(meth.Name), g.sig(mem))
+			}
+		}
+		for _, a := range m.Actions {
+			if _, ok := mj.Members[lcFirst(a)]; !ok {
+				panic(fmt.Sprintf("hostgen: module %q lists action %q but has no such method", name, a))
+			}
 		}
 		st := t
 		if st.Kind() == reflect.Pointer {
@@ -125,7 +149,7 @@ func GenerateHost(reg map[string]HostModule, pkgAlias string) (string, string) {
 func (g *hostGen) sig(m *HostMemberJSON) string {
 	var ps []string
 	for i, p := range m.Params {
-		ps = append(ps, fmt.Sprintf("arg%d: %s", i, p.Type))
+		ps = append(ps, fmt.Sprintf("%s: %s", paramName(p, i), p.Type))
 	}
 	ret := "void"
 	if m.Ret != nil {
@@ -134,11 +158,49 @@ func (g *hostGen) sig(m *HostMemberJSON) string {
 	return "(" + strings.Join(ps, ", ") + "): " + ret
 }
 
+// asyncSig: an action's signature inside islands — it returns a Promise
+func (g *hostGen) asyncSig(m *HostMemberJSON) string {
+	var ps []string
+	for i, p := range m.Params {
+		ps = append(ps, fmt.Sprintf("%s: %s", paramName(p, i), p.Type))
+	}
+	ret := "void"
+	if m.Ret != nil {
+		ret = m.Ret.Type
+	}
+	return "(" + strings.Join(ps, ", ") + "): Promise<" + ret + ">"
+}
+
 var errT = reflect.TypeOf((*error)(nil)).Elem()
+var reqT = reflect.TypeOf((*Req)(nil))
+
+// checkKind: the dialect cannot represent channels, funcs, interfaces or unsafe pointers; fail with the type named
+// instead of emitting `unknown` (errors.md promises the message names the type)
+func (g *hostGen) checkKind(t reflect.Type, goName, what string) {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array || t.Kind() == reflect.Map {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Chan, reflect.Func, reflect.UnsafePointer, reflect.Complex64, reflect.Complex128:
+		panic(fmt.Sprintf("hostgen: %s: %s has Go type %s, which the dialect cannot represent (use strings, numbers, slices, maps and structs)", goName, what, t))
+	case reflect.Interface:
+		if t.NumMethod() > 0 { // `any` becomes unknown (JSON passthrough); a real interface has no shape
+			panic(fmt.Sprintf("hostgen: %s: %s has interface type %s; expose a concrete struct instead", goName, what, t))
+		}
+	}
+}
 
 func (g *hostGen) method(ft reflect.Type, goName string) *HostMemberJSON {
 	m := &HostMemberJSON{Kind: "method", Go: goName}
 	for i := 1; i < ft.NumIn(); i++ {
+		if ft.In(i) == reqT {
+			if i != 1 || m.Req {
+				panic(fmt.Sprintf("hostgen: %s: *gotsx.Req must be the first (and only) request parameter", goName))
+			}
+			m.Req = true // injected by the runtime
+			continue
+		}
+		g.checkKind(ft.In(i), goName, fmt.Sprintf("parameter %d", i-1))
 		m.Params = append(m.Params, HostParamJSON{Type: g.ts(ft.In(i)), Go: ft.In(i).String()})
 	}
 	n := ft.NumOut()
@@ -147,6 +209,7 @@ func (g *hostGen) method(ft reflect.Type, goName string) *HostMemberJSON {
 		n--
 	}
 	if n >= 1 {
+		g.checkKind(ft.Out(0), goName, "result")
 		m.Ret = &HostParamJSON{Type: g.ts(ft.Out(0)), Go: ft.Out(0).String()}
 	}
 	return m
@@ -190,6 +253,10 @@ func (g *hostGen) ts(t reflect.Type) string {
 				meth := pt.Method(i)
 				mem := g.method(meth.Type, meth.Name)
 				mem.File, mem.Line = funcPos(pt, meth)
+				g.nameParams(mem)
+				if mem.Req {
+					panic(fmt.Sprintf("hostgen: %s.%s: *gotsx.Req is only injected into module-level methods listed in Actions (type methods cannot be actions)", pt, meth.Name))
+				}
 				tj.Methods[lcFirst(meth.Name)] = mem
 			}
 		}
@@ -200,6 +267,56 @@ func (g *hostGen) ts(t reflect.Type) string {
 
 // funcPos: 方法的 Go 源码文件与行(runtime.FuncForPC), 给 LSP 的跳转定义用。
 // 值接收者的方法通过指针类型拿到的是编译器生成的包装(<autogenerated>), 所以优先查值类型上的同名方法。
+// nameParams reads parameter names from the method's Go source (reflection has none), so host.d.ts / hover show toggle(id: string) instead of arg0
+func (g *hostGen) nameParams(m *HostMemberJSON) {
+	if m.File == "" || len(m.Params) == 0 {
+		return
+	}
+	if g.files == nil {
+		g.files = map[string]*ast.File{}
+	}
+	f, ok := g.files[m.File]
+	if !ok {
+		f, _ = parser.ParseFile(g.fset, m.File, nil, 0)
+		g.files[m.File] = f
+	}
+	if f == nil {
+		return
+	}
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Name.Name != m.Go || fd.Recv == nil || g.fset.Position(fd.Pos()).Line != m.Line {
+			continue
+		}
+		var names []string
+		for _, p := range fd.Type.Params.List {
+			if len(p.Names) == 0 {
+				names = append(names, "")
+				continue
+			}
+			for _, n := range p.Names {
+				names = append(names, n.Name)
+			}
+		}
+		if m.Req && len(names) > 0 {
+			names = names[1:]
+		}
+		for i := range m.Params {
+			if i < len(names) && names[i] != "" && names[i] != "_" {
+				m.Params[i].Name = names[i]
+			}
+		}
+		return
+	}
+}
+
+func paramName(p HostParamJSON, i int) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return fmt.Sprintf("arg%d", i)
+}
+
 func funcPos(t reflect.Type, meth reflect.Method) (string, int) {
 	fn := meth.Func
 	base := t

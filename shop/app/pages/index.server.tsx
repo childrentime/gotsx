@@ -1,4 +1,4 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { flashCards, flashLeftMs, categories } from "host:catalog";
 import { url, name as siteName } from "host:site";
 import Layout from "../components/Layout.server";
@@ -6,7 +6,13 @@ import Icon from "../ui/Icon";
 import Countdown from "../islands/Countdown.client";
 import Feed from "../islands/Feed.client";
 
-export default function Home({ cookies, locale }: PageProps) {
+// Page meta → pages/_layout.server.tsx renders <title>, description, canonical and og:* from it
+export function meta(props: PageProps): Meta {
+  const lc = props.locale !== "" ? props.locale : "en";
+  return { title: t(lc, "home.title") };
+}
+
+export default function Home({ cookies, locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   const sid = cookies.sid ?? "";
   const deals = flashCards().slice(0, 10);
@@ -25,7 +31,8 @@ export default function Home({ cookies, locale }: PageProps) {
     ["shield", t(lc, "perk.price.t"), t(lc, "perk.price.d")],
   ];
   return (
-    <Layout title={t(lc, "home.title")} sid={sid} locale={lc} active="home" wide path="/" ld={ld}>
+    <Layout sid={sid} locale={lc} active="home" wide path={path}>
+      {jsonLd(ld)}
       {/* Hero */}
       <section class="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div class="card flex flex-col justify-center p-8 sm:p-10">

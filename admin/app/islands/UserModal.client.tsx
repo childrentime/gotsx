@@ -1,4 +1,5 @@
 import { useState, useEffect, on, emit } from "gotsx";
+import { create, update } from "host:users";     // typed actions: UsersModule.Create / Update (validated in Go)
 import Icon from "../ui/Icon";
 
 interface Errs { name?: string; email?: string; role?: string; dept?: string; _?: string; }
@@ -34,16 +35,16 @@ export default function UserModal() {
     setBusy(true);
     setErrs({});
     const isEdit = id !== "";
-    const url = isEdit ? "/users/update" : "/users/create";
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, name, email, role, dept, status }) });
-    const d = await r.json();
-    setBusy(false);
-    if (d.ok) {
+    try {
+      if (isEdit) await update(id, name, email, role, dept, status);
+      else await create(name, email, role, dept);
       setOpen(false);
       emit("admin:changed", {});
       emit("admin:toast", { msg: isEdit ? "Changes saved" : "User created", kind: "ok" });
-    } else {
-      setErrs(d.errors);
+    } catch (e) {
+      setErrs(e.status === 422 ? e.fields : { _: e.message });   // field messages from gotsx.Invalid, else the error
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -61,7 +62,7 @@ export default function UserModal() {
             </div>
             <button class="btn btn-ghost btn-icon-sm -mr-2 -mt-1 text-muted-foreground" aria-label="Close" onClick={() => setOpen(false)}><Icon name="x" /></button>
           </div>
-          {errs._ !== undefined && <div class="mb-4 flex items-center gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive"><Icon name="alert" />{errs._}</div>}
+          {errs._ !== undefined && <div class="alert alert-error mb-4 flex items-center gap-2"><Icon name="alert" />{errs._}</div>}
           <div class="space-y-4">
             <div class="space-y-2">
               <label class="label">Name</label>

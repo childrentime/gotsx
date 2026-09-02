@@ -383,7 +383,7 @@ func typeSuffix(t Type) string {
 func hostSig(m *HostMember) string {
 	var ps []string
 	for i, p := range m.Params {
-		ps = append(ps, fmt.Sprintf("arg%d: %s", i, typeStr(p.Type)))
+		ps = append(ps, fmt.Sprintf("%s: %s", hostParamName(p, i), typeStr(p.Type)))
 	}
 	ret := "void"
 	if m.Ret != nil {

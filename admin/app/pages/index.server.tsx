@@ -1,14 +1,20 @@
-import type { PageProps } from "gotsx";
+import type { PageProps, Meta } from "gotsx";
 import { cards, recent } from "host:stats";
 import Shell from "../components/Shell.server";
 import Icon from "../ui/Icon";
 
-export default function Dashboard({ cookies }: PageProps) {
+export function meta(): Meta {
+  return { title: "Dashboard", description: "Users, growth and recent activity of the gotsx back-office demo." };
+}
+
+// Protected page: the signed session (props.session, written by the login action) decides; no middleware needed.
+export default function Dashboard({ session }: PageProps) {
+  if (session.user === "") redirect("/login");
   const stat = cards();
   const acts = recent();
   const bars = [30, 45, 38, 52, 48, 61, 55, 70, 64, 78, 72, 88];
   return (
-    <Shell title="Dashboard" active="home" name={cookies._name ?? ""} role={cookies._role ?? ""}>
+    <Shell title="Dashboard" active="home" name={session.name} role={session.role}>
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stat.map((s) => (
           <div class="card p-5">

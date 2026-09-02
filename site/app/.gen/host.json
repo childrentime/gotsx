@@ -8,10 +8,12 @@
           "go": "Tokens",
           "params": [
             {
+              "name": "code",
               "type": "string",
               "go": "string"
             },
             {
+              "name": "lang",
               "type": "string",
               "go": "string"
             }

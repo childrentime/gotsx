@@ -3,6 +3,8 @@
 declare module "gotsx" {
   /** A rendered node (JSX). */
   export type Node = JSX.Element;
+  /** A one-shot message queued by an action (req.Session().Flash) and delivered to the next page. */
+  export interface Flash { kind: string; text: string; }
   /** Props every page component receives. */
   export interface PageProps {
     params: Record<string, string>;
@@ -10,9 +12,17 @@ declare module "gotsx" {
     path: string;
     locale: string;
     cookies: Record<string, string>;
+    /** Session values (read-only here; write them in actions via req.Session()). */
+    session: Record<string, string>;
+    /** Flash messages consumed by this render. */
+    flash: Flash[];
+    /** CSRF token for classic <form method="post"> handlers (name="_csrf"). */
+    csrf: string;
   }
   /** Props of pages/**\/_layout.server.tsx: the page props plus the wrapped content. */
-  export interface LayoutProps extends PageProps { children: Node; }
+  /** Page metadata: a page exports "function meta(props: PageProps): Meta"; layouts read it as props.meta. */
+  export interface Meta { title?: string; description?: string; canonical?: string; image?: string; noIndex?: boolean; }
+  export interface LayoutProps extends PageProps { meta: Meta; children: Node; }
   /** Props of pages/_error.server.tsx. */
   export interface ErrorProps extends PageProps { message: string; }
   /** Streaming boundary (server components only): the fallback ships with the shell, children render afterwards in their own goroutine. */

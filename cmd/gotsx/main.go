@@ -4,6 +4,8 @@
 //	gotsx build [appdir]     compile app/ → gen/ (hostgen → tailwind → dialect → assets)
 //	gotsx dev   [appdir]     build + go build + run; watches app/ host/ public/ and restarts (browser auto-reloads)
 //	gotsx check [appdir]     type-check only, print diagnostics as file:line:col (--json for machines); exit 1 on errors
+//	gotsx export [appdir]    static export: build, run, crawl every route, rewrite --base, copy assets into --out
+//	gotsx docs [name]        print the version-matched docs (the same files gotsx build writes to app/.gen/docs/)
 //	gotsx lsp                Language Server Protocol over stdio (diagnostics for editors)
 //	gotsx tailwind           download the Tailwind standalone binary into .tools/ (no Node needed)
 //	gotsx version            print the version
@@ -14,10 +16,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/childrentime/gotsx/client"
@@ -27,10 +31,12 @@ import (
 const usage = `gotsx — a TSX dialect that compiles to native Go
 
 Usage:
-  gotsx new <dir> [--module name] [--replace path] [--tailwind]
+  gotsx new <dir> [--module name] [--replace path] [--tailwind] [--db sqlite]
   gotsx build [appdir]
   gotsx dev   [appdir] [-addr :3000] [app flags...]
   gotsx check [appdir] [--json]
+  gotsx export [appdir] [--out dist] [--base /subpath] [--site https://host] [--routes /,/docs] [--port 4123]
+  gotsx docs [index|language|conventions|runtime|errors|agent-workflow]
   gotsx lsp
   gotsx tailwind [--dir .tools]
   gotsx version
@@ -76,6 +82,26 @@ func main() {
 			rest = args[1:]
 		}
 		dev(dir, cfg, rest)
+	case "export":
+		dir, o, err := parseExportArgs(args)
+		if err != nil {
+			fail(fmt.Errorf("%v\n%s", err, usage))
+		}
+		cfg, err := readConfig(dir)
+		if err != nil {
+			fail(err)
+		}
+		if err := export(dir, cfg, o); err != nil {
+			fail(err)
+		}
+	case "docs":
+		name := "index"
+		if len(args) > 0 {
+			name = args[0]
+		}
+		if err := printDoc(name); err != nil {
+			fail(err)
+		}
 	case "check":
 		dir := appDirArg(args)
 		asJSON := false
@@ -252,6 +278,7 @@ func build(dir string, cfg appConfig, incremental bool) error {
 	if err != nil {
 		return err
 	}
+	ensureAgentFiles(dir) // AGENTS.md managed block + app/.gen/docs/ (version-matched docs for agents)
 	steps := fmt.Sprintf("compile %s", time.Since(t1).Round(time.Millisecond))
 	if hostgen == "ran" {
 		steps = fmt.Sprintf("hostgen %s ∥ ", hostMs.Round(time.Millisecond)) + steps
@@ -311,6 +338,14 @@ func check(dir string, asJSON bool) int {
 // ---------- dev ----------
 
 func dev(dir string, cfg appConfig, appArgs []string) {
+	if st, alive := readDevState(dir); alive {
+		fmt.Fprintf(os.Stderr, "gotsx dev is already running for this app: pid %d, %s (started %s).\nStop it first, or use it — .gotsx/dev.json is the source of truth.\n", st.PID, st.URL, st.Started)
+		os.Exit(1)
+	}
+	port := portOf(appArgs)
+	if err := writeDevState(dir, port); err != nil {
+		fail(err)
+	}
 	var proc *exec.Cmd
 	stop := func() {
 		if proc != nil && proc.Process != nil {
@@ -319,11 +354,24 @@ func dev(dir string, cfg appConfig, appArgs []string) {
 			proc = nil
 		}
 	}
+	cleanup := func() {
+		stop()
+		os.Remove(devStatePath(dir))
+	}
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		cleanup()
+		os.Exit(0)
+	}()
+	defer cleanup()
 	gen := 0
 	run := func() {
 		// build first; only swap the process on success so the old server keeps serving during a compile error
 		if err := build(dir, cfg, gen > 0); err != nil {
-			fmt.Fprintln(os.Stderr, "\n"+err.Error()+"\n(the previous build keeps running)")
+			fmt.Fprintln(os.Stderr, "\n"+err.Error()+"\n(the previous build keeps running; the browser shows the errors, so does .gotsx/diagnostics.json)")
+			writeDiagnostics(dir, "gotsx: build failed", err)
 			return
 		}
 		gen++
@@ -334,8 +382,10 @@ func dev(dir string, cfg appConfig, appArgs []string) {
 		gb.Dir = dir
 		if out, err := gb.CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "\ngo build failed:\n%s\n(the previous build keeps running)\n", out)
+			writeDiagnostics(dir, "go build failed", fmt.Errorf("%s", out))
 			return
 		}
+		clearDiagnostics(dir)
 		fmt.Printf("gotsx: go build %s\n", time.Since(t).Round(time.Millisecond))
 		stop()
 		proc = exec.Command(bin, append([]string{"-dev"}, appArgs...)...)
@@ -343,6 +393,8 @@ func dev(dir string, cfg appConfig, appArgs []string) {
 		proc.Stdout, proc.Stderr = os.Stdout, os.Stderr
 		if err := proc.Start(); err != nil {
 			fmt.Fprintln(os.Stderr, "start failed:", err)
+		} else if gen == 1 {
+			fmt.Printf("gotsx: dev server → http://localhost:%d (state in .gotsx/dev.json)\n", port)
 		}
 	}
 	run()

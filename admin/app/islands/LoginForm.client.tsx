@@ -1,4 +1,5 @@
 import { useState } from "gotsx";
+import { login } from "host:auth";               // typed action: AuthModule.Login(req, user, pass) → Promise<Profile>
 import Icon from "../ui/Icon";
 
 export default function LoginForm() {
@@ -9,25 +10,24 @@ export default function LoginForm() {
   const submit = async () => {
     setBusy(true);
     setErr("");
-    const r = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user, pass }) });
-    const d = await r.json();
-    if (d.ok) {
+    try {
+      await login(user, pass);                     // the session cookie is set by the response
       window.location.href = "/";
-    } else {
-      setErr(d.error);
+    } catch (e) {
+      setErr(e.fields.password ?? e.message);      // 422: field message; anything else: the error text
       setBusy(false);
     }
   };
   return (
     <div class="space-y-4">
-      {err !== "" && <div class="flex items-center gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive"><Icon name="alert" />{err}</div>}
+      {err !== "" && <div class="alert alert-error flex items-center gap-2"><Icon name="alert" />{err}</div>}
       <div class="space-y-2">
         <label class="label">Username</label>
-        <input class="input" value={user} onInput={(e) => setUser(e.target.value)} />
+        <input class="input" name="user" value={user} onInput={(e) => setUser(e.target.value)} />
       </div>
       <div class="space-y-2">
         <label class="label">Password</label>
-        <input type="password" class="input" value={pass} onInput={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+        <input type="password" class="input" name="pass" value={pass} onInput={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
       </div>
       <button class="btn btn-primary w-full" disabled={busy} onClick={submit}>
         {busy && <Icon name="spinner" cls="icon animate-spin" />}

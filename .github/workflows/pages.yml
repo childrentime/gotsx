@@ -19,8 +19,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Static-export the docs site (BASE = repo subpath)
-        run: BASE=/${{ github.event.repository.name }} ./scripts/export-site.sh
+      - name: Static-export the docs site (gotsx export: build, crawl every route, rewrite the repo subpath)
+        run: |
+          go run ./cmd/gotsx tailwind
+          go run ./cmd/gotsx export site --out dist --base /${{ github.event.repository.name }} --site https://${{ github.repository_owner }}.github.io
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

@@ -2,6 +2,8 @@
 package gotsx
 
 import (
+	"bytes"
+	"encoding"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -225,9 +227,178 @@ func Marked(n Node) Node {
 }
 
 // Island: 客户端组件的服务端外壳。props 序列化进属性, 内部子树带 hydrate 标记。
+// noNil encodes nil slices / nil maps in island props as [] / {} rather than null — in the dialect an empty array is an
+// empty array, and island code calls .map on it directly. Props whose type contains no slice / map / pointer at all
+// (the common case: a few scalars) are encoded as-is without reflection.
+func noNil(v any) any {
+	if v == nil {
+		return nil
+	}
+	t := reflect.TypeOf(v)
+	if c, ok := nilable.Load(t); ok {
+		if !c.(bool) {
+			return v
+		}
+	} else {
+		n := hasNilable(t, map[reflect.Type]bool{})
+		nilable.Store(t, n)
+		if !n {
+			return v
+		}
+	}
+	return noNilValue(reflect.ValueOf(v), &nilWalk{path: map[uintptr]bool{}})
+}
+
+// nilWalk: state of one noNil traversal — the pointers on the current path (cycle detection) and the depth
+type nilWalk struct {
+	path  map[uintptr]bool
+	depth int
+}
+
+var (
+	jsonMarshalerT = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+	textMarshalerT = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
+)
+
+func isMarshaler(rv reflect.Value) bool {
+	t := rv.Type()
+	return t.Implements(jsonMarshalerT) || t.Implements(textMarshalerT)
+}
+
+// jsonEmpty: encoding/json's omitempty rule (false, 0, "", nil pointer/interface, empty array/slice/map/string; structs never)
+func jsonEmpty(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return v.Len() == 0
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr, reflect.Float32, reflect.Float64:
+		return v.IsZero()
+	case reflect.Interface, reflect.Pointer:
+		return v.IsNil()
+	}
+	return false
+}
+
+var nilable sync.Map // reflect.Type → bool
+
+func hasNilable(t reflect.Type, seen map[reflect.Type]bool) bool {
+	switch t.Kind() {
+	case reflect.Slice, reflect.Map, reflect.Pointer, reflect.Interface:
+		return true
+	case reflect.Array:
+		return hasNilable(t.Elem(), seen)
+	case reflect.Struct:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
+		for i := 0; i < t.NumField(); i++ {
+			if hasNilable(t.Field(i).Type, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func noNilValue(rv reflect.Value, w *nilWalk) any {
+	if w.depth > 1000 { // safety net; cycles are caught by the path set below
+		return nil
+	}
+	w.depth++
+	defer func() { w.depth-- }()
+	if rv.IsValid() && rv.CanInterface() && isMarshaler(rv) { // json.Marshaler / encoding.TextMarshaler (time.Time, netip.Addr, …): as encoding/json would
+		return rv.Interface()
+	}
+	if rv.IsValid() && rv.CanAddr() && isMarshaler(rv.Addr()) { // pointer-receiver MarshalJSON on an addressable value
+		return rv.Addr().Interface()
+	}
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice:
+		if !rv.IsNil() {
+			ptr := rv.Pointer()
+			if w.path[ptr] { // a cycle (child.Parent == root): stop here instead of recursing forever
+				return nil
+			}
+			w.path[ptr] = true
+			defer delete(w.path, ptr)
+		}
+	}
+	switch rv.Kind() {
+	case reflect.Invalid:
+		return nil
+	case reflect.Pointer, reflect.Interface:
+		if rv.IsNil() {
+			return nil
+		}
+		return noNilValue(rv.Elem(), w)
+	case reflect.Slice:
+		if rv.Type().Elem().Kind() == reflect.Uint8 { // []byte keeps its base64 encoding
+			return rv.Interface()
+		}
+		out := make([]any, rv.Len())
+		for i := range out {
+			out[i] = noNilValue(rv.Index(i), w)
+		}
+		return out
+	case reflect.Map:
+		out := make(map[string]any, rv.Len())
+		iter := rv.MapRange()
+		for iter.Next() {
+			out[fmt.Sprint(iter.Key().Interface())] = noNilValue(iter.Value(), w)
+		}
+		return out
+	case reflect.Struct:
+		out := map[string]any{}
+		t := rv.Type()
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			fv := rv.Field(i)
+			if f.Anonymous && fv.Kind() == reflect.Pointer && fv.Type().Elem().Kind() == reflect.Struct { // embedded *T: json promotes its fields, skips nil
+				if fv.IsNil() {
+					continue
+				}
+				fv = fv.Elem()
+			}
+			embedded := f.Anonymous && fv.Kind() == reflect.Struct
+			if !f.IsExported() && !embedded { // an unexported embedded struct promotes its exported fields, as encoding/json does
+				continue
+			}
+			name, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if name == "-" {
+				continue
+			}
+			if embedded && name == "" { // embedded struct: promote its fields
+				if m, ok := noNilValue(fv, w).(map[string]any); ok {
+					for k, v := range m {
+						out[k] = v
+					}
+				}
+				continue
+			}
+			if name == "" {
+				name = f.Name
+			}
+			if strings.Contains(opts, "omitempty") && jsonEmpty(fv) {
+				continue
+			}
+			out[name] = noNilValue(fv, w)
+		}
+		return out
+	}
+	if !rv.CanInterface() {
+		return nil
+	}
+	return rv.Interface()
+}
+
 func Island(name string, props any, inner Node) Node {
 	return func(c *Ctx) {
 		b, _ := json.Marshal(props)
+		if bytes.Contains(b, []byte("null")) { // only then can a nil slice/map be hiding in there: re-encode with [] / {}
+			if nb, err := json.Marshal(noNil(props)); err == nil {
+				b = nb
+			}
+		}
 		c.b.WriteString(`<gotsx-island name="`)
 		c.b.WriteString(name)
 		c.b.WriteString(`" props="`)
@@ -534,6 +705,18 @@ type PageProps struct {
 	Path    string            `json:"path"`
 	Locale  string            `json:"locale"`
 	Cookies map[string]string `json:"-"`
+	Session map[string]string `json:"-"` // session values (read-only here; write them in actions via req.Session())
+	Flash   []Flash           `json:"-"` // one-shot messages (cleared after this render)
+	csrf    func() string     // lazy: the token is generated and the session cookie set only when a page actually reads props.csrf (anonymous pages send no Set-Cookie and stay CDN-cacheable)
+}
+
+// CSRF returns this session's CSRF token (for classic forms: <input type="hidden" name="_csrf" value={csrf} />); props.csrf in the
+// dialect compiles to this call. Read it outside <Suspense> boundaries (once the shell is flushed a cookie can no longer be set).
+func (p PageProps) CSRF() string {
+	if p.csrf == nil {
+		return ""
+	}
+	return p.csrf()
 }
 
 type numeric interface {
@@ -919,7 +1102,17 @@ func NotFound() Node {
 // LayoutProps: pages/**/_layout.server.tsx 的 props —— 页面 props 加上被包裹的内容
 type LayoutProps struct {
 	PageProps
+	Meta     Meta `json:"meta"` // the result of the page's export function meta(props) (zero value when absent)
 	Children Node `json:"-"`
+}
+
+// Meta is the page metadata convention — a page exports `function meta(props: PageProps): Meta`, and layouts render <title> etc. from LayoutProps.meta
+type Meta struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Canonical   string `json:"canonical"`
+	Image       string `json:"image"`
+	NoIndex     bool   `json:"noIndex"`
 }
 
 // ErrorProps: pages/_error.server.tsx 的 props —— 页面 props 加上错误信息(生产模式下是通用文案)

@@ -2,6 +2,8 @@ package gotsx
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -339,5 +341,433 @@ func TestDateBuiltins(t *testing.T) {
 	}
 	if Now() < ms {
 		t.Error("now")
+	}
+}
+
+// ---------- typed actions ----------
+
+type actTodo struct {
+	ID   string `json:"id"`
+	Done bool   `json:"done"`
+}
+
+func actionServer(t *testing.T, acts []HostAction, secret string) http.Handler {
+	t.Helper()
+	opt := Options{Routes: []Route{homeRoute()}, ClientDir: t.TempDir(), HostActions: acts, SessionSecret: secret}
+	return Handler(opt)
+}
+
+func post(h http.Handler, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", path, strings.NewReader(body))
+	req.Host = "app.local"
+	req.Header.Set("Origin", "http://app.local")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gotsx-Action", "1")
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestActionsEndToEnd(t *testing.T) {
+	calls := 0
+	acts := []HostAction{
+		{Module: "todos", Name: "toggle", Fn: func(req *Req, args []json.RawMessage) (any, error) {
+			var id string
+			if err := Arg(args, 0, &id); err != nil {
+				return nil, err
+			}
+			calls++
+			if id == "missing" {
+				return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
+			}
+			if id == "" {
+				return nil, Invalid(map[string]string{"id": "required"})
+			}
+			if id == "boom" {
+				panic("kaboom")
+			}
+			req.Session().Set("last", id)
+			req.Session().Flash("ok", "toggled "+id)
+			return actTodo{ID: id, Done: true}, nil
+		}},
+		{Module: "todos", Name: "ping", Fn: func(req *Req, args []json.RawMessage) (any, error) { return nil, nil }},
+	}
+	h := actionServer(t, acts, "secret")
+
+	rec := post(h, "/_gotsx/act/todos/toggle", `["a"]`, nil)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"data":{"id":"a","done":true}`) {
+		t.Fatalf("ok call: %d %s", rec.Code, rec.Body.String())
+	}
+	cookie := rec.Header().Get("Set-Cookie")
+	if !strings.Contains(cookie, sessionCookie+"=") || !strings.Contains(cookie, "HttpOnly") {
+		t.Errorf("action should save the session cookie: %q", cookie)
+	}
+	// the page sees session and flash, and the flash appears only once
+	get := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Cookie", strings.Split(cookie, ";")[0])
+		r := httptest.NewRecorder()
+		h.ServeHTTP(r, req)
+		return r
+	}
+	var seen PageProps
+	route := Route{Pattern: "/", Render: func(p PageProps) Node { seen = p; return El("html", nil, El("body", nil)) }}
+	h2 := Handler(Options{Routes: []Route{route}, ClientDir: t.TempDir(), HostActions: acts, SessionSecret: "secret"})
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Cookie", strings.Split(cookie, ";")[0])
+	r1 := httptest.NewRecorder()
+	h2.ServeHTTP(r1, req)
+	if seen.Session["last"] != "a" || len(seen.Flash) != 1 || seen.Flash[0].Text != "toggled a" || seen.CSRF() == "" {
+		t.Errorf("page props from session: %+v", seen)
+	}
+	c2 := r1.Header().Get("Set-Cookie")
+	if c2 == "" {
+		t.Fatal("consuming the flash must write the session cookie back")
+	}
+	// anonymous visit without reading csrf → no Set-Cookie (cacheable); reading csrf → cookie set
+	anon := httptest.NewRecorder()
+	h2.ServeHTTP(anon, httptest.NewRequest("GET", "/", nil))
+	if anon.Header().Get("Set-Cookie") != "" {
+		t.Errorf("anonymous page without csrf use must not set a cookie: %q", anon.Header().Get("Set-Cookie"))
+	}
+	if seen.CSRF() != "" { // read after rendering: the closure still works, but the cookie can no longer be set — only check it still returns a token
+		t.Log("late CSRF() returns a token (documented: read it in the shell)")
+	}
+	route.Render = func(p PageProps) Node { seen = p; tok := p.CSRF(); return El("html", nil, El("body", nil, Text(tok))) }
+	h3 := Handler(Options{Routes: []Route{route}, ClientDir: t.TempDir(), HostActions: acts, SessionSecret: "secret"})
+	withTok := httptest.NewRecorder()
+	h3.ServeHTTP(withTok, httptest.NewRequest("GET", "/", nil))
+	if !strings.Contains(withTok.Header().Get("Set-Cookie"), sessionCookie+"=") || !strings.Contains(withTok.Body.String(), seen.CSRF()) {
+		t.Errorf("reading props.csrf must create the token and set the cookie: %q", withTok.Header().Get("Set-Cookie"))
+	}
+	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.Header.Set("Cookie", strings.Split(c2, ";")[0])
+	h2.ServeHTTP(httptest.NewRecorder(), req2)
+	if len(seen.Flash) != 0 || seen.Session["last"] != "a" {
+		t.Errorf("flash must be consumed once, session kept: %+v", seen)
+	}
+	_ = get
+
+	// 422 validation error
+	rec = post(h, "/_gotsx/act/todos/toggle", `[""]`, nil)
+	if rec.Code != 422 || !strings.Contains(rec.Body.String(), `"fields":{"id":"required"}`) {
+		t.Errorf("validation: %d %s", rec.Code, rec.Body.String())
+	}
+	// 404 / 500 / argument errors
+	if rec = post(h, "/_gotsx/act/todos/toggle", `["missing"]`, nil); rec.Code != 404 {
+		t.Errorf("not found: %d", rec.Code)
+	}
+	if rec = post(h, "/_gotsx/act/todos/toggle", `["boom"]`, nil); rec.Code != 500 || strings.Contains(rec.Body.String(), "kaboom") {
+		t.Errorf("panic → 500 without detail in prod: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = post(h, "/_gotsx/act/todos/toggle", `[]`, nil); rec.Code != 400 {
+		t.Errorf("missing arg: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = post(h, "/_gotsx/act/todos/nope", `[]`, nil); rec.Code != 404 {
+		t.Errorf("unknown action: %d", rec.Code)
+	}
+	if rec = post(h, "/_gotsx/act/todos/ping", `[]`, nil); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"data":null`) {
+		t.Errorf("void action: %d %s", rec.Code, rec.Body.String())
+	}
+	// CSRF: missing header / cross-origin → 403
+	req = httptest.NewRequest("POST", "/_gotsx/act/todos/toggle", strings.NewReader(`["a"]`))
+	req.Host = "app.local"
+	req.Header.Set("Origin", "http://app.local")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 403 {
+		t.Errorf("missing X-Gotsx-Action should be rejected: %d", rec.Code)
+	}
+	req = httptest.NewRequest("POST", "/_gotsx/act/todos/toggle", strings.NewReader(`["a"]`))
+	req.Host = "app.local"
+	req.Header.Set("Origin", "https://evil.example")
+	req.Header.Set("X-Gotsx-Action", "1")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 403 {
+		t.Errorf("cross-origin should be rejected: %d", rec.Code)
+	}
+	if calls != 4 {
+		t.Errorf("handler calls = %d", calls)
+	}
+}
+
+func TestSessionSigning(t *testing.T) {
+	s := &server{opt: Options{SessionSecret: "k"}}
+	sess := s.loadSession(httptest.NewRequest("GET", "/", nil))
+	sess.Set("u", "1")
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/", nil)
+	r = r.WithContext(context.WithValue(r.Context(), ctxServer, s))
+	sess.save(rec, r)
+	ck := rec.Header().Get("Set-Cookie")
+	val := strings.TrimPrefix(strings.Split(ck, ";")[0], sessionCookie+"=")
+	// tampered → empty session
+	tampered := httptest.NewRequest("GET", "/", nil)
+	tampered.Header.Set("Cookie", sessionCookie+"="+val[:len(val)-2]+"xx")
+	if s.loadSession(tampered).Get("u") != "" {
+		t.Error("tampered cookie must not verify")
+	}
+	good := httptest.NewRequest("GET", "/", nil)
+	good.Header.Set("Cookie", sessionCookie+"="+val)
+	if s.loadSession(good).Get("u") != "1" {
+		t.Error("valid cookie should load")
+	}
+	// CSRF token verify
+	sess2 := s.loadSession(good)
+	tok := sess2.CSRF()
+	rec2 := httptest.NewRecorder()
+	sess2.save(rec2, r)
+	val2 := strings.TrimPrefix(strings.Split(rec2.Header().Get("Set-Cookie"), ";")[0], sessionCookie+"=")
+	form := httptest.NewRequest("POST", "/x", strings.NewReader("_csrf="+tok))
+	form.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	form.Header.Set("Cookie", sessionCookie+"="+val2)
+	form = form.WithContext(context.WithValue(form.Context(), ctxServer, s))
+	if !VerifyCSRF(form) {
+		t.Error("matching _csrf should verify")
+	}
+	bad := httptest.NewRequest("POST", "/x", strings.NewReader("_csrf=nope"))
+	bad.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	bad.Header.Set("Cookie", sessionCookie+"="+val2)
+	bad = bad.WithContext(context.WithValue(bad.Context(), ctxServer, s))
+	if VerifyCSRF(bad) {
+		t.Error("wrong token must fail")
+	}
+}
+
+func TestActionStatusesAndNilProps(t *testing.T) {
+	acts := []HostAction{
+		{Module: "m", Name: "auth", Fn: func(req *Req, args []json.RawMessage) (any, error) { return nil, Unauthorized("sign in") }},
+		{Module: "m", Name: "role", Fn: func(req *Req, args []json.RawMessage) (any, error) { return nil, Forbidden("viewer") }},
+		{Module: "m", Name: "bad", Fn: func(req *Req, args []json.RawMessage) (any, error) { return nil, Fail("nope") }},
+	}
+	h := actionServer(t, acts, "k")
+	for name, want := range map[string]int{"auth": 401, "role": 403, "bad": 400} {
+		if rec := post(h, "/_gotsx/act/m/"+name, `[]`, nil); rec.Code != want {
+			t.Errorf("%s: %d %s", name, rec.Code, rec.Body.String())
+		}
+	}
+	if (&ValidationError{Message: "validation failed", Fields: map[string]string{"b": "B", "a": "A"}}).Error() != "a: A; b: B" {
+		t.Error("ValidationError.Error should list fields")
+	}
+	// island props: nil slice / map → [] / {}, embedded structs promoted, json tags and omitempty honored, []byte untouched
+	type inner struct {
+		Tags []string            `json:"tags"`
+		M    map[string]int      `json:"m"`
+		Skip string              `json:"-"`
+		Opt  []string            `json:"opt,omitempty"`
+		Raw  []byte              `json:"raw"`
+		Ptr  *[]int              `json:"ptr"`
+		Nest []struct{ X []int } `json:"nest"`
+	}
+	type outer struct {
+		inner
+		Name  string  `json:"name"`
+		Items []inner `json:"items"`
+		Flash []Flash `json:"flash"`
+	}
+	b, _ := json.Marshal(noNil(outer{Name: "n"}))
+	got := string(b)
+	for _, want := range []string{`"tags":[]`, `"m":{}`, `"name":"n"`, `"items":[]`, `"flash":[]`, `"raw":null`, `"ptr":null`, `"nest":[]`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("noNil: want %s in %s", want, got)
+		}
+	}
+	if strings.Contains(got, "opt") || strings.Contains(got, "Skip") {
+		t.Errorf("noNil: omitempty / - ignored: %s", got)
+	}
+	var out strings.Builder
+	n := Island("X", struct {
+		Initial []Flash `json:"initial"`
+	}{}, nil)
+	c := &Ctx{}
+	n(c)
+	out.WriteString(c.b.String())
+	if !strings.Contains(out.String(), `initial&#34;:[]`) && !strings.Contains(out.String(), `initial":[]`) && !strings.Contains(out.String(), `initial&quot;:[]`) {
+		t.Errorf("island props should carry [] for a nil slice: %s", out.String())
+	}
+}
+
+func TestReviewFixes(t *testing.T) {
+	// 1. cyclic island props must not overflow the stack
+	type node struct {
+		Name     string  `json:"name"`
+		Parent   *node   `json:"parent"`
+		Children []*node `json:"children"`
+	}
+	root := &node{Name: "r"}
+	child := &node{Name: "c", Parent: root}
+	root.Children = []*node{child}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("cyclic props panicked: %v", r)
+			}
+		}()
+		_ = noNil(root)
+	}()
+	// 2. noNil parity with encoding/json on nil-free inputs (embedded pointer promotion, omitempty)
+	type base struct {
+		A []int `json:"a"`
+	}
+	type withPtr struct {
+		*base
+		N     int      `json:"n"`
+		Empty []string `json:"empty,omitempty"`
+		Zero  int      `json:"zero,omitempty"`
+		S     string   `json:"s,omitempty"`
+		Keep  struct{} `json:"keep,omitempty"`
+	}
+	for _, v := range []any{withPtr{base: &base{A: []int{1}}, N: 1, Empty: []string{}}, withPtr{N: 2, S: "x"}} {
+		want, _ := json.Marshal(v)
+		got, _ := json.Marshal(noNil(v))
+		var w, g any
+		json.Unmarshal(want, &w)
+		json.Unmarshal(got, &g)
+		if !reflect.DeepEqual(w, g) { // same document; key order may differ (maps marshal sorted)
+			t.Errorf("noNil parity:\n json: %s\n noNil: %s", want, got)
+		}
+	}
+	if b, _ := json.Marshal(noNil(withPtr{base: &base{}, N: 3})); !strings.Contains(string(b), `"a":[]`) {
+		t.Errorf("nil slice through an embedded pointer should become []: %s", b)
+	}
+	// 3. the X-Gotsx-Action header is required even with DisableCSRF (HTML forms cannot set it)
+	acts := []HostAction{{Module: "m", Name: "n", Fn: func(req *Req, args []json.RawMessage) (any, error) { return "ok", nil }}}
+	h := Handler(Options{Routes: []Route{homeRoute()}, ClientDir: t.TempDir(), HostActions: acts, DisableCSRF: true, SessionSecret: "k"})
+	form := httptest.NewRequest("POST", "/_gotsx/act/m/n", strings.NewReader(`["1"]=`))
+	form.Header.Set("Content-Type", "text/plain")
+	form.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, form)
+	if rec.Code != 403 {
+		t.Errorf("text/plain form post without the header must be rejected: %d", rec.Code)
+	}
+	if rec = post(h, "/_gotsx/act/m/n", `[]`, map[string]string{"Origin": "https://elsewhere.example"}); rec.Code != 200 {
+		t.Errorf("DisableCSRF still allows cross-origin calls that carry the header: %d", rec.Code)
+	}
+	// 4. a custom 404 page that reads csrf gets the cookie; Unauthorized keeps its fields
+	nf := func(p PageProps) Node { tok := p.CSRF(); return El("html", nil, El("body", nil, Text(tok))) }
+	h404 := Handler(Options{Routes: []Route{homeRoute()}, ClientDir: t.TempDir(), NotFound: nf, SessionSecret: "k"})
+	rec = httptest.NewRecorder()
+	h404.ServeHTTP(rec, httptest.NewRequest("GET", "/missing", nil))
+	if rec.Code != 404 || !strings.Contains(rec.Header().Get("Set-Cookie"), sessionCookie+"=") {
+		t.Errorf("404 page reading csrf must persist the session: %d %q", rec.Code, rec.Header().Get("Set-Cookie"))
+	}
+	ve := &ValidationError{Message: "no", Fields: map[string]string{"x": "y"}, Status: 401}
+	if ve.Error() != "no: x: y" {
+		t.Errorf("Error(): %q", ve.Error())
+	}
+	// 5. Clear() removes the cookie; a hand-built Req has a detached session
+	s := &server{opt: Options{SessionSecret: "k"}}
+	sess := &Session{}
+	sess.Set("a", "1")
+	sess.Clear()
+	rec = httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/", nil)
+	sess.save(rec, r.WithContext(context.WithValue(r.Context(), ctxServer, s)))
+	if ck := rec.Header().Get("Set-Cookie"); !strings.Contains(ck, "Max-Age=0") {
+		t.Errorf("Clear should delete the cookie: %q", ck)
+	}
+	bare := &Req{}
+	bare.Session().Set("k", "v")
+	if bare.Session().Get("k") != "v" {
+		t.Error("a Req without a server must still offer a session")
+	}
+	// 6. hostgen rejects *Req in a later position and unsupported kinds
+	for _, v := range []any{badReqPos{}, badChan{}} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("hostgen should reject %T", v)
+				}
+			}()
+			GenerateHost(map[string]HostModule{"x": {Value: v, Go: "host.X"}}, "host")
+		}()
+	}
+}
+
+type badReqPos struct{}
+
+func (badReqPos) Bad(id string, req *Req) error { return nil }
+
+type badChan struct{}
+
+func (badChan) Watch() chan int { return nil }
+
+type ptrMarshal struct{ V int }
+
+func (p *ptrMarshal) MarshalJSON() ([]byte, error) { return []byte(`"ptr-marshaled"`), nil }
+
+type textMarshal struct{ v string }
+
+func (t textMarshal) MarshalText() ([]byte, error) { return []byte(t.v), nil }
+
+type deepNode struct {
+	Next *deepNode `json:"next"`
+	Tags []string  `json:"tags"`
+}
+
+type typeWithReq struct{}
+
+func (typeWithReq) Touch(req *Req) {}
+
+type modWithTypeReq struct {
+	T *typeWithReq `json:"t"`
+}
+
+func TestNoNilRoundTwo(t *testing.T) {
+	// marshalers pass through exactly as encoding/json would
+	in := struct {
+		P    *ptrMarshal            `json:"p"`
+		M    map[string]*ptrMarshal `json:"m"`
+		Text textMarshal            `json:"text"`
+		When time.Time              `json:"when"`
+		Nil  []int                  `json:"nil"`
+	}{P: &ptrMarshal{2}, M: map[string]*ptrMarshal{"k": {3}}, Text: textMarshal{"hi"}, When: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
+	got, _ := json.Marshal(noNil(in))
+	for _, want := range []string{`"p":"ptr-marshaled"`, `"m":{"k":"ptr-marshaled"}`, `"text":"hi"`, `"when":"2026-01-02T03:04:05Z"`, `"nil":[]`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("want %s in %s", want, got)
+		}
+	}
+	// a deep but acyclic chain is kept whole; a cycle stops at the back-reference
+	root := &deepNode{}
+	cur := root
+	for i := 0; i < 200; i++ {
+		cur.Next = &deepNode{}
+		cur = cur.Next
+	}
+	got, _ = json.Marshal(noNil(root))
+	if strings.Count(string(got), `"tags":[]`) != 201 {
+		t.Errorf("deep chain truncated: %d nodes", strings.Count(string(got), `"tags":[]`))
+	}
+	cyc := &deepNode{}
+	cyc.Next = cyc
+	got, _ = json.Marshal(noNil(cyc))
+	if string(got) != `{"next":null,"tags":[]}` {
+		t.Errorf("cycle: %s", got)
+	}
+	// hostgen: *Req on a type method is rejected
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("hostgen must reject *Req on type methods")
+			}
+		}()
+		GenerateHost(map[string]HostModule{"x": {Value: modWithTypeReq{}, Go: "host.X"}}, "host")
+	}()
+	// IsHTTPS through proxies
+	for hdr, val := range map[string]string{"X-Forwarded-Proto": "https", "Forwarded": "for=1.2.3.4;proto=https", "CF-Visitor": `{"scheme":"https"}`} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Header.Set(hdr, val)
+		if !IsHTTPS(r) {
+			t.Errorf("%s should mean https", hdr)
+		}
+	}
+	if IsHTTPS(httptest.NewRequest("GET", "/", nil)) {
+		t.Error("plain request is not https")
 	}
 }

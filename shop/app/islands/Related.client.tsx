@@ -1,4 +1,5 @@
 import { useState, useEffect } from "gotsx";
+import { related } from "host:catalog";          // typed action: CatalogModule.Related(id) → Promise<Card[]>
 import type { Card } from "host:catalog";
 import CardShell from "../ui/CardShell";
 import SkeletonCard from "../ui/SkeletonCard";
@@ -8,9 +9,7 @@ export default function Related({ id, locale = "" }: { id: string; locale?: stri
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const run = async () => {
-      const r = await fetch(`/api/related?id=${encodeURIComponent(id)}`);
-      const d = await r.json();
-      setCards(d.cards as Card[]);
+      setCards(await related(id));
       setLoading(false);
     };
     run();

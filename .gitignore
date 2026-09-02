@@ -14,3 +14,7 @@ admin/public/tailwind.css
 dist/
 # stray CLI binary from `go build ./cmd/gotsx` in the repo root
 /gotsx
+
+# version-matched agent docs written by gotsx build (source: cmd/gotsx/docs)
+*/app/.gen/docs/
+bench/*/app/.gen/docs/

@@ -1,15 +1,14 @@
-// Package server builds the shop's gotsx.Options (routes, i18n, actions, error pages) so that main.go,
-// tests and other hosts (the Cloudflare Worker in deploy/cloudflare) share one definition. Writes are Go actions;
-// sessions are a sid cookie.
+// Package server builds the shop's gotsx.Options (routes, i18n, typed actions, error pages) so that main.go,
+// tests and other hosts (the Cloudflare Worker in deploy/cloudflare) share one definition. Writes are typed actions
+// (host.Registry[...].Actions → gen.HostActions); the anonymous session is a sid cookie.
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
-	"regexp"
+	"os"
 	"strconv"
 	"strings"
 
@@ -23,47 +22,15 @@ func sidOf(w http.ResponseWriter, r *http.Request) string {
 		return ck.Value
 	}
 	sid := host.NewSID()
-	http.SetCookie(w, &http.Cookie{Name: "sid", Value: sid, Path: "/", MaxAge: 86400 * 30, HttpOnly: true})
+	http.SetCookie(w, host.SIDCookie(sid, gotsx.IsHTTPS(r)))
 	return sid
 }
-
-type body struct {
-	ID      string `json:"id"`
-	Variant string `json:"variant"`
-	Qty     int    `json:"qty"`
-	Name    string `json:"name"`
-	Phone   string `json:"phone"`
-	Address string `json:"address"`
-}
-
-func parse(r *http.Request) body {
-	var b body
-	json.NewDecoder(r.Body).Decode(&b)
-	return b
-}
-
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
-}
-
-var phoneRe = regexp.MustCompile(`^\+?[0-9]{7,15}$`) // international: optional +, 7-15 digits (spaces / dashes stripped)
 
 func htmlAttr(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
 	s = strings.ReplaceAll(s, "\"", "&quot;")
 	s = strings.ReplaceAll(s, "<", "&lt;")
 	return s
-}
-
-func atoiDefault(s string, d int) int {
-	n := d
-	if s != "" {
-		if v, err := strconv.Atoi(s); err == nil {
-			n = v
-		}
-	}
-	return n
 }
 
 // messages: the i18n catalog. English is the primary language; zh is the secondary locale. Keys are grouped by area
@@ -111,6 +78,7 @@ var messages = map[string]map[string]string{
 		"orders.title": "My orders", "orders.empty": "No orders yet", "orders.first": "Place your first order", "orders.count": "{n} item|{n} items", "orders.total": "Total",
 		"order.title": "Order {id}", "order.success": "Order placed", "order.number": "Order", "order.viewAll": "View all orders", "order.items": "Items",
 		"order.shipping": "Shipping details", "order.paid": "Amount paid", "order.continue": "Continue shopping",
+		"order.flash":    "Thanks {name}, order {id} is confirmed. A confirmation would be emailed in a real store.",
 		"status.paid":    "Paid, awaiting shipment",
 		"category.meta":  "{label} · curated products, {n} items, factory-direct, free shipping over $69.",
 		"error.notFound": "Page not found", "error.server": "Something went wrong, please try again later", "error.home": "Back to home",
@@ -156,6 +124,7 @@ var messages = map[string]map[string]string{
 		"orders.title": "我的订单", "orders.empty": "还没有订单", "orders.first": "去下第一单", "orders.count": "共 {n} 件", "orders.total": "合计",
 		"order.title": "订单 {id}", "order.success": "下单成功", "order.number": "订单号", "order.viewAll": "查看全部订单", "order.items": "商品清单",
 		"order.shipping": "收货信息", "order.paid": "实付金额", "order.continue": "继续购物",
+		"order.flash":    "{name}, 订单 {id} 已确认。真实商店会发送确认邮件。",
 		"status.paid":    "已支付, 待发货",
 		"category.meta":  "{label} · 精选好物, 共 {n} 件, 工厂直发, 满 $69 包邮。",
 		"error.notFound": "找不到这个页面", "error.server": "服务器开小差了, 请稍后再试", "error.home": "回首页",
@@ -166,30 +135,24 @@ var messages = map[string]map[string]string{
 // (the embedded public/ directory in main.go; the Cloudflare worker embeds its own copy). Addr / ClientDir / PublicDir
 // are set by the caller when it runs a real server.
 func Options(dev bool, publicFS fs.FS) gotsx.Options {
-	panel := func(icon, msg, sid, locale string) gotsx.Node {
-		return gen.Layout(gen.LayoutProps{Title: msg, Sid: sid, Locale: locale, Wide: true, Children: gotsx.El("div",
-			[]gotsx.Attr{gotsx.A("class", "card flex flex-col items-center py-24 text-center")},
-			gotsx.El("div", []gotsx.Attr{gotsx.A("class", "text-5xl")}, gotsx.Text(icon)),
-			gotsx.El("p", []gotsx.Attr{gotsx.A("class", "mt-4 font-medium")}, gotsx.Text(msg)),
-			gotsx.El("a", []gotsx.Attr{gotsx.A("href", "/"), gotsx.A("class", "btn btn-primary mt-6")}, gotsx.Text(gotsx.Tr(locale, "error.home"))))})
-	}
 	i18n := &gotsx.I18n{
 		Locales: []string{"en", "zh"}, Default: "en", Prefix: true, // / is English, /zh/... is Chinese
 		Currency: map[string]string{"en": "$", "zh": "¥"},
 		Messages: messages,
 	}
 	return gotsx.Options{
-		Dev:      dev,
-		I18n:     i18n,
-		Routes:   gen.Routes,
-		ClientFS: gen.ClientFS,
-		PublicFS: publicFS,
-		NotFound: func(p gotsx.PageProps) gotsx.Node {
-			return panel("🔍", gotsx.Tr(p.Locale, "error.notFound"), p.Cookies["sid"], p.Locale)
-		},
-		ErrorPage: func(p gotsx.PageProps, err error) gotsx.Node {
-			return panel("😵", gotsx.Tr(p.Locale, "error.server"), p.Cookies["sid"], p.Locale)
-		},
+		Dev:       dev,
+		I18n:      i18n,
+		Routes:    gen.Routes,
+		ClientFS:  gen.ClientFS,
+		PublicFS:  publicFS,
+		NotFound:  gen.NotFound,  // pages/_404.server.tsx
+		ErrorPage: gen.ErrorPage, // pages/_error.server.tsx
+		// Typed actions: cart.add / cart.setQty / wish.toggle / orders.place / catalog.feed / catalog.related.
+		// The compiler generated the routes (POST /_gotsx/act/<module>/<name>), the JSON decoding and the CSRF checks.
+		HostActions: gen.HostActions,
+		// Signed session cookie (flash messages, PageProps.session); empty → random per start, set it in production.
+		SessionSecret: os.Getenv("SESSION_SECRET"),
 		OnClientEvent: func(ev gotsx.ClientEvent, r *http.Request) {
 			if ev.Type == "pageview" {
 				log.Printf("[telemetry] pageview %s ref=%q", ev.URL, ev.Ref)
@@ -248,53 +211,6 @@ func Options(dev bool, publicFS fs.FS) gotsx.Options {
 				}
 				b.WriteString("</urlset>\n")
 				w.Write([]byte(b.String()))
-			},
-			"GET /api/feed": func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(w, host.Catalog.Feed(atoiDefault(r.URL.Query().Get("page"), 1)))
-			},
-			"GET /api/related": func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(w, map[string]any{"cards": host.Catalog.Related(r.URL.Query().Get("id"))})
-			},
-			"POST /actions/cart/add": func(w http.ResponseWriter, r *http.Request) {
-				sid, b := sidOf(w, r), parse(r)
-				cv, err := host.Cart.Add(sid, b.ID, b.Variant, b.Qty)
-				if err != nil {
-					writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
-					return
-				}
-				writeJSON(w, map[string]any{"ok": true, "cart": cv})
-			},
-			"POST /actions/cart/set": func(w http.ResponseWriter, r *http.Request) {
-				sid, b := sidOf(w, r), parse(r)
-				writeJSON(w, map[string]any{"ok": true, "cart": host.Cart.SetQty(sid, b.ID, b.Variant, b.Qty)})
-			},
-			"POST /actions/wish": func(w http.ResponseWriter, r *http.Request) {
-				sid, b := sidOf(w, r), parse(r)
-				writeJSON(w, map[string]any{"ok": true, "wished": host.Wish.Toggle(sid, b.ID)})
-			},
-			"POST /actions/checkout": func(w http.ResponseWriter, r *http.Request) {
-				sid, b := sidOf(w, r), parse(r)
-				errs := map[string]string{}
-				if len(strings.TrimSpace(b.Name)) < 2 {
-					errs["name"] = "Name must be at least 2 characters"
-				}
-				phone := strings.NewReplacer(" ", "", "-", "", "(", "", ")", "").Replace(strings.TrimSpace(b.Phone))
-				if !phoneRe.MatchString(phone) {
-					errs["phone"] = "Enter a valid phone number (7-15 digits, optional +)"
-				}
-				if len(strings.TrimSpace(b.Address)) < 5 {
-					errs["address"] = "Address is too short"
-				}
-				if len(errs) > 0 {
-					writeJSON(w, map[string]any{"ok": false, "errors": errs})
-					return
-				}
-				o, err := host.Orders.Place(sid, strings.TrimSpace(b.Name), strings.TrimSpace(b.Phone), strings.TrimSpace(b.Address))
-				if err != nil {
-					writeJSON(w, map[string]any{"ok": false, "errors": map[string]string{"_": err.Error()}})
-					return
-				}
-				writeJSON(w, map[string]any{"ok": true, "orderId": o.ID})
 			},
 		},
 	}
