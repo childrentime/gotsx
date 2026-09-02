@@ -11,3 +11,4 @@ shop/public/tailwind.css
 admin/gen/
 admin/.gotsx/
 admin/public/tailwind.css
+dist/
