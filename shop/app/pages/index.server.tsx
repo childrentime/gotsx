@@ -22,7 +22,7 @@ export default function Home({ cookies, locale }: PageProps) {
     <Layout title="全球好物 · 工厂直发" sid={sid} locale={locale} active="home" wide path="/" ld={ld}>
       {/* Hero */}
       <section class="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <div class="card flex flex-col justify-between p-8 sm:p-10">
+        <div class="card flex flex-col justify-center p-8 sm:p-10">
           <div>
             <span class="badge badge-secondary">新人首单立减 ¥15</span>
             <h1 class="mt-5 max-w-lg text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">像逛工厂一样,<br />把好物直接搬回家</h1>

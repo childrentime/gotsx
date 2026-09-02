@@ -1,5 +1,11 @@
 # gotsx
 
+[![CI](https://github.com/childrentime/gotsx/actions/workflows/ci.yml/badge.svg)](https://github.com/childrentime/gotsx/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/childrentime/gotsx.svg)](https://pkg.go.dev/github.com/childrentime/gotsx/runtime)
+[![Go Report Card](https://goreportcard.com/badge/github.com/childrentime/gotsx)](https://goreportcard.com/report/github.com/childrentime/gotsx)
+[![Docs](https://img.shields.io/badge/docs-childrentime.github.io%2Fgotsx-111?logo=readthedocs&logoColor=white)](https://childrentime.github.io/gotsx/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [English](README.md) · **中文**
 
 **借 React + TSX 的思想、编译到 Go 原生的全栈框架。** 一份 TSX 源码, 两个编译器: 服务端组件编成 Go 函数, 客户端岛编成 signals。没有 vdom、没有 JS 引擎、没有 Node、没有 npm、没有 esbuild —— **工具链只有 Go**。
@@ -31,6 +37,22 @@ export default function Counter({ start }: { start: number }) {
   return <button onClick={() => setN(n + 1)}>{n} ×2 = {double}{n > 4 && <b> 🔥</b>}</button>;
 }
 ```
+
+<p align="center">
+  <img src="docs/screenshots/shop.png" alt="shop 示例: Go 渲染的 Temu 风格商城" width="820">
+  <br><sub><code>shop</code> 示例 —— 192 件商品、购物车、结算、中英双语 —— 每个页面都是 TSX 编译出的 Go 函数, 交互部分是岛。</sub>
+</p>
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/admin.png" alt="admin 示例: 带数据表的后台" width="400"></td>
+    <td><img src="docs/screenshots/site-dark.png" alt="暗色模式的文档站" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><code>admin</code>: 鉴权、CRUD 表格、模态框、toast</sub></td>
+    <td align="center"><sub><code>site</code>: 文档站本身用 gotsx 写, 暗色模式由设计 token 驱动</sub></td>
+  </tr>
+</table>
 
 ## 为什么
 

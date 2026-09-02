@@ -1,5 +1,11 @@
 # gotsx
 
+[![CI](https://github.com/childrentime/gotsx/actions/workflows/ci.yml/badge.svg)](https://github.com/childrentime/gotsx/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/childrentime/gotsx.svg)](https://pkg.go.dev/github.com/childrentime/gotsx/runtime)
+[![Go Report Card](https://goreportcard.com/badge/github.com/childrentime/gotsx)](https://goreportcard.com/report/github.com/childrentime/gotsx)
+[![Docs](https://img.shields.io/badge/docs-childrentime.github.io%2Fgotsx-111?logo=readthedocs&logoColor=white)](https://childrentime.github.io/gotsx/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **English** · [中文](README.zh.md)
 
 **A full-stack framework that borrows React + TSX ideas and compiles to native Go.** One TSX source, two compilers: server components become Go functions, client islands become signals. No virtual DOM, no JS engine, no Node, no npm, no esbuild — **the toolchain is just Go**.
@@ -31,6 +37,22 @@ export default function Counter({ start }: { start: number }) {
   return <button onClick={() => setN(n + 1)}>{n} ×2 = {double}{n > 4 && <b> 🔥</b>}</button>;
 }
 ```
+
+<p align="center">
+  <img src="docs/screenshots/shop.png" alt="The shop demo: a Temu-style store rendered by Go" width="820">
+  <br><sub>The <code>shop</code> demo — 192 products, cart, checkout, i18n — every page is a Go function compiled from TSX; the interactive parts are islands.</sub>
+</p>
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/admin.png" alt="The admin demo: back office with a data table" width="400"></td>
+    <td><img src="docs/screenshots/site-dark.png" alt="The docs site in dark mode" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><code>admin</code>: auth, CRUD table, modals, toasts</sub></td>
+    <td align="center"><sub><code>site</code>: the docs, built with gotsx, dark mode via design tokens</sub></td>
+  </tr>
+</table>
 
 ## Why
 
