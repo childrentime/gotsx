@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	gotsx "gotsx/runtime"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 // ---------- 认证 ----------

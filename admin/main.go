@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"gotsx/admin/gen"
-	"gotsx/admin/host"
-	gotsx "gotsx/runtime"
+	"github.com/childrentime/gotsx/admin/gen"
+	"github.com/childrentime/gotsx/admin/host"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 //go:embed public

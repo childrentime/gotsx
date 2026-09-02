@@ -9,9 +9,9 @@ import (
 	"log"
 	"net/http"
 
-	"gotsx/example/gen"
-	"gotsx/example/host"
-	gotsx "gotsx/runtime"
+	"github.com/childrentime/gotsx/example/gen"
+	"github.com/childrentime/gotsx/example/host"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 //go:embed public
@@ -29,6 +29,8 @@ func main() {
 		ClientFS:  gen.ClientFS,
 		PublicFS:  mustSub(publicEmbed, "public"),
 		PublicDir: gotsx.FindDir("public"),
+		NotFound:  gen.NotFound,  // pages/_404.server.tsx
+		ErrorPage: gen.ErrorPage, // pages/_error.server.tsx
 		Actions: map[string]http.HandlerFunc{
 			"POST /actions/like": func(w http.ResponseWriter, r *http.Request) {
 				n, err := host.Data.Models.Like(r.URL.Query().Get("id"))

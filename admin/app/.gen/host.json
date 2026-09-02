@@ -15,7 +15,9 @@
           "ret": {
             "type": "Session",
             "go": "host.Session"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 60
         },
         "isAuthed": {
           "kind": "method",
@@ -29,7 +31,9 @@
           "ret": {
             "type": "boolean",
             "go": "bool"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 71
         },
         "login": {
           "kind": "method",
@@ -48,7 +52,9 @@
             "type": "string",
             "go": "string"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 39
         },
         "logout": {
           "kind": "method",
@@ -58,7 +64,9 @@
               "type": "string",
               "go": "string"
             }
-          ]
+          ],
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 53
         }
       }
     },
@@ -71,7 +79,9 @@
           "ret": {
             "type": "Stat[]",
             "go": "[]host.Stat"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 279
         },
         "recent": {
           "kind": "method",
@@ -79,7 +89,9 @@
           "ret": {
             "type": "Activity[]",
             "go": "[]host.Activity"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 299
         }
       }
     },
@@ -92,7 +104,9 @@
           "ret": {
             "type": "UserPage",
             "go": "host.UserPage"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 172
         },
         "create": {
           "kind": "method",
@@ -118,7 +132,9 @@
           "ret": {
             "type": "User",
             "go": "host.User"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 218
         },
         "delete": {
           "kind": "method",
@@ -132,7 +148,9 @@
           "ret": {
             "type": "boolean",
             "go": "bool"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 255
         },
         "get": {
           "kind": "method",
@@ -147,7 +165,9 @@
             "type": "User",
             "go": "host.User"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 180
         },
         "query": {
           "kind": "method",
@@ -173,7 +193,9 @@
           "ret": {
             "type": "UserPage",
             "go": "host.UserPage"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 122
         },
         "update": {
           "kind": "method",
@@ -207,7 +229,9 @@
           "ret": {
             "type": "User",
             "go": "host.User"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/admin/host/host.go",
+          "line": 234
         }
       }
     }

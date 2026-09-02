@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	gotsx "gotsx/runtime"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 // lag: 模拟后端 I/O 延迟, 让加载态/骨架屏是真的在等一个"接口"。SHOP_NOLAG=1 关闭。

@@ -1,1 +1,4 @@
-{ "module": "gotsx/admin", "hostPackage": "gotsx/admin/host" }
+{
+  "module": "github.com/childrentime/gotsx/admin",
+  "hostPackage": "github.com/childrentime/gotsx/admin/host"
+}

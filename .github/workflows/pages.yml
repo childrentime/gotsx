@@ -19,7 +19,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: 静态导出官网(BASE=仓库名子路径)
+      - name: Static-export the docs site (BASE = repo subpath)
         run: BASE=/${{ github.event.repository.name }} ./scripts/export-site.sh
       - uses: actions/upload-pages-artifact@v3
         with:

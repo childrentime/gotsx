@@ -8,8 +8,8 @@ export default function Counter({ start }: { start: number }) {
     console.log("count is now", n);        // 只进 JS 后端
   });
   return (
-    <button class="btn ghost" onClick={() => setN(n + 1)}>
-      岛状态 {n} <small>×2 = {double}</small>
+    <button class="btn btn-outline btn-sm" onClick={() => setN(n + 1)}>
+      岛状态 {n} <span class="muted">×2 = {double}</span>
       {n > 4 && <b> 🔥</b>}
     </button>
   );

@@ -3,8 +3,9 @@ package compiler
 import (
 	"strings"
 	"testing"
+	"testing/fstest"
 
-	gotsx "gotsx/runtime"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 // 测试用的宿主模块: host:data 暴露 models(store) 和 Model 类型
@@ -44,7 +45,7 @@ func compileOne(t *testing.T, file, src string) (goSrc, jsSrc string) {
 	if err := c.CheckAll(); err != nil {
 		t.Fatalf("check %s: %v", file, err)
 	}
-	gs, err := GenGo(c, m, "gen", "gotsx/runtime", "gotsx/example/host")
+	gs, err := GenGo(c, m, "gen", "github.com/childrentime/gotsx/runtime", "github.com/childrentime/gotsx/example/host")
 	if err != nil {
 		t.Fatalf("GenGo %s: %v", file, err)
 	}
@@ -85,7 +86,7 @@ func compileErr(file, src string) (string, bool) {
 	if err := c.CheckAll(); err != nil {
 		return err.Error(), true
 	}
-	if _, err := GenGo(c, m, "gen", "gotsx/runtime", "gotsx/example/host"); err != nil {
+	if _, err := GenGo(c, m, "gen", "github.com/childrentime/gotsx/runtime", "github.com/childrentime/gotsx/example/host"); err != nil {
 		return err.Error(), true
 	}
 	if m.Kind != "server" {
@@ -94,4 +95,13 @@ func compileErr(file, src string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// fakeClientFS: Build 需要客户端运行时文件; 测试里用占位内容
+func fakeClientFS() fstest.MapFS {
+	return fstest.MapFS{
+		"runtime.js":       {Data: []byte("// runtime")},
+		"loader.js":        {Data: []byte("// loader")},
+		"idiomorph.esm.js": {Data: []byte("// idiomorph")},
+	}
 }

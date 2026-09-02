@@ -72,6 +72,9 @@ export function at(xs, i) { i = i < 0 ? xs.length + i : i; return i >= 0 && i < 
 export function reverse(xs) { return xs.slice().reverse(); }
 export function objectKeys(o) { return Object.keys(o).sort(); }                 // 排序, 与 Go map 一致
 export function objectValues(o) { return objectKeys(o).map((k) => o[k]); }
+export function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }                  // localeCompare: 两端都按码点比较
+export function match(s, re) { const m = s.match(re); return m ? Array.from(m) : []; }  // 没匹配 → [](与 Go 一致)
+export function isoDate(ms) { const d = new Date(ms); return isNaN(d) ? "" : d.toISOString(); }
 export function jsonLd(s) { const el = document.createElement("script"); el.type = "application/ld+json"; el.textContent = s; return el; }
 
 /* i18n(客户端): 与 Go 后端逐一对应。目录是当前语言的那份(服务端注入到 __GOTSX.i18n) */
@@ -257,11 +260,81 @@ export function cond(test, a, b) {
   });
 }
 
-export function each(list, item) {
-  return block(() => {
+export function each(list, item, key) {
+  if (!key) {
+    return block(() => {
+      const xs = list() || [];
+      return untrack(() => flat(xs.map((x, i) => item(x, i))));
+    });
+  }
+  return keyedEach(list, item, key);
+}
+
+/* keyed 列表: 每一项有自己的所有者(effect 随项销毁)和 DOM 范围; 列表变化时按 key 复用 / 移动 / 销毁,
+   不整块重建 —— 输入框状态、焦点、动画都留在原来的节点上。移动用最少的 insertBefore(已在位的不动)。 */
+function newOwner() { return { fn: null, deps: [], children: [], disposed: false }; }
+function rangeNodes(after, stop) {
+  const out = [];
+  for (let n = after.nextSibling; n && n !== stop; n = n.nextSibling) out.push(n);
+  return out;
+}
+function keyedEach(list, item, key) {
+  const holder = newOwner();                 // 所有项的所有者挂在这里, 随外层块一起销毁
+  if (owner) owner.children.push(holder);
+  const first = !!hy;
+  const start = hy ? claimComment("[") : document.createComment("[");
+  let end, initial = true, initialNodes = [];
+  let items = new Map();                     // key → { nodes, o }
+  const render = (x, i, anchor) => {
+    const o = newOwner();
+    holder.children.push(o);
+    const po = owner;
+    owner = o;
+    let nodes;
+    try {
+      if (hy) { flat(item(x, i)); nodes = rangeNodes(anchor, hy.node); }   // hydrate: 认领的节点就是 anchor 之后到游标之前
+      else nodes = flat(item(x, i));
+    } finally { owner = po; }
+    return { nodes, o };
+  };
+  effect(() => {
     const xs = list() || [];
-    return untrack(() => flat(xs.map((x, i) => item(x, i))));
+    untrack(() => {
+      const next = new Map();
+      const order = [];
+      let anchor = start;
+      xs.forEach((x, i) => {
+        let k = key(x, i);
+        if (next.has(k)) k = String(k) + "\u0000" + i;   // 重复 key: 退化成按位置
+        let it = items.get(k);
+        if (it) items.delete(k); else it = render(x, i, anchor);
+        if (it.nodes.length) anchor = it.nodes[it.nodes.length - 1];
+        next.set(k, it);
+        order.push(it);
+      });
+      for (const it of items.values()) {       // 消失的项: 销毁 effect, 删 DOM
+        dispose(it.o);
+        const idx = holder.children.indexOf(it.o);
+        if (idx >= 0) holder.children.splice(idx, 1);
+        for (const n of it.nodes) if (n.parentNode) n.parentNode.removeChild(n);
+      }
+      items = next;
+      if (initial) {
+        initial = false;
+        end = hy ? claimComment("]") : document.createComment("]");
+        for (const it of order) initialNodes.push(...it.nodes);
+        return;
+      }
+      const parent = end.parentNode;
+      if (!parent) return;
+      let cur = start.nextSibling;             // 按新顺序走一遍: 已在位的跳过, 其它的插到游标前
+      for (const it of order) for (const n of it.nodes) {
+        if (n === cur) cur = cur.nextSibling;
+        else parent.insertBefore(n, cur);
+      }
+    });
   });
+  return first ? [] : [start, ...initialNodes, end];
 }
 
 /* 岛的挂载: hydrate=true 时按 root 里的现有 DOM 走位, 否则重建 */

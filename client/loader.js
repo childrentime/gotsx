@@ -141,11 +141,13 @@ async function navigate(url, push = true) {
     Idiomorph.morph(document.body, doc.body, { morphStyle: "outerHTML", callbacks: { beforeNodeMorphed: keepIslands } });
     reconcile();
   };
+  const applyFills = () => document.querySelectorAll("template[data-gotsx-fill]").forEach((t) => window.__gotsxFill && window.__gotsxFill(t.getAttribute("data-gotsx-fill")));
   if (document.startViewTransition) {
     const vt = document.startViewTransition(swap);
     vt.ready.catch(() => {});                       // 过渡被跳过(如紧接着又一次跳转)不算错
     try { await vt.finished; } catch { /* 同上 */ }
   } else swap();
+  applyFills();                                  // 流式 Suspense 的填充随 HTML 一起到达, 跳转后手动应用
   if (push) window.scrollTo(0, 0);
   document.dispatchEvent(new CustomEvent("gotsx:navigated", { detail: { url } }));
 }
@@ -183,5 +185,16 @@ addEventListener("unhandledrejection", (e) => report({ type: "rejection", messag
 if (logURL()) report({ type: "pageview", url: location.href, ref: document.referrer });
 document.addEventListener("gotsx:navigated", (e) => report({ type: "pageview", url: e.detail.url }));
 
+/* dev 模式: 监听 /_gotsx/dev 的 SSE。gotsx dev 重启进程后 bootID 变了 → 整页刷新(编译失败时旧进程还在, id 不变, 不刷新) */
+if (window.__GOTSX && window.__GOTSX.dev && typeof EventSource !== "undefined") {
+  let boot = null;
+  const es = new EventSource("/_gotsx/dev");
+  es.onmessage = (e) => {
+    if (boot === null) boot = e.data;
+    else if (e.data !== boot) { es.close(); location.reload(); }
+  };
+}
+
 reconcile();
 window.__gotsxNavigate = navigate;
+window.__gotsxReconcile = reconcile;

@@ -1,31 +1,32 @@
 # gotsx
 
-**中文** · [English](README.md)
+[English](README.md) · **中文**
 
-**借 React + TSX 的思想,编译到 Go 原生的全栈框架。** 一份 TSX 源码,两个编译器:服务端编成 Go 函数,客户端编成 signals。没有虚拟 DOM、没有 JS 引擎、没有 Node、没有 npm、没有 esbuild —— **工具链只有 Go**。
+**借 React + TSX 的思想、编译到 Go 原生的全栈框架。** 一份 TSX 源码, 两个编译器: 服务端组件编成 Go 函数, 客户端岛编成 signals。没有 vdom、没有 JS 引擎、没有 Node、没有 npm、没有 esbuild —— **工具链只有 Go**。
 
-> **状态:v0.4 · C 端消费应用(含 i18n)· 仍在打磨。** 这是一个可用的端到端 PoC —— 编译器 + 两个后端 + 运行时 + dev 循环 + 四个真实应用(含一个完整电商)+ 测试套件。它足以证明"TSX 能编译到 Go 原生并撑起真实应用",但语言有已知长尾、未经安全审计、无 LSP。详见 [路线图](#路线图)。
+> **状态: v0.6 · 路线图已清零, 接口面写在 [`STABILITY.md`](STABILITY.md) · 仍在 1.0 之前。** 端到端可用的框架 —— 编译器 + 两个后端 + 运行时 + 流式 SSR + 带自动刷新的 dev 循环 + 脚手架 + 编辑器服务(诊断、hover、跳转定义)+ 共享设计系统 + 四个真实应用(含完整电商)+ 测试套件。语言是有意为之的静态子集(见下); 1.0 之前还差的是独立安全审计。见[路线图](#路线图)。
 
 ```tsx
-// app/pages/index.server.tsx —— 编译成 Go 函数, 永不进浏览器
+// app/pages/index.server.tsx —— 编成 Go 函数, 永远不进浏览器
 import type { PageProps } from "gotsx";
-import { models } from "host:data";              // Go 实现, 类型由反射生成, 调用零编组
+import { models } from "host:data";              // Go 实现; 类型由反射生成, 调用零编组
 import Layout from "../components/Layout.server";
 
 export default function Home({ query }: PageProps) {
-  const list = models.search(query.q ?? "");     // 同步: 并发由 goroutine 提供, 没有 async
-  return <Layout title="模型">
+  if (query.legacy !== "") return redirect("/");  // 页面级控制流: redirect() / notFound()
+  const list = models.search(query.q ?? "");     // 同步: 并发由 goroutine 提供, 语言里没有 async
+  return <Layout title="商品">
     <ul>{list.map((m) => <li>{m.title} · ¥{m.price}</li>)}</ul>
   </Layout>;
 }
 ```
 
 ```tsx
-// app/islands/Counter.client.tsx —— 同一份源码: 服务端做 SSR, 客户端做交互
+// app/islands/Counter.client.tsx —— 同一份源码: 服务端 SSR, 客户端交互
 import { useState, useEffect } from "gotsx";
 export default function Counter({ start }: { start: number }) {
   const [n, setN] = useState(start);
-  const double = n * 2;                           // 依赖 n → 自动编译成 memo, 不需要 useMemo
+  const double = n * 2;                           // 依赖 n → 自动编成 memo, 不需要 useMemo
   useEffect(() => { console.log(n); }, []);       // 空依赖 = 挂载跑一次
   return <button onClick={() => setN(n + 1)}>{n} ×2 = {double}{n > 4 && <b> 🔥</b>}</button>;
 }
@@ -33,124 +34,132 @@ export default function Counter({ start }: { start: number }) {
 
 ## 为什么
 
-**核心洞察:SSR 是一次同步的单趟求值。** 没有重渲染、没有 effect、setter 永不被调用。所以服务端不需要 React 运行时,只需要组件的"渲染切片"—— 而它的语义小到可以直接编译成 Go。于是:一个列表页服务端渲染 **~30µs**(goja 跑 React+MUI 的版本要 ~50ms),客户端运行时 **~6KB**,`go build` 出单二进制,`delve`/`pprof`/`go test` 全能用。
+**核心洞察: SSR 是一次同步的、单趟的求值。** 没有重渲染、没有 effect、setter 永远不会被调用。所以服务端不需要 React 运行时 —— 只需要组件的"渲染切片", 它的语义小到可以直接编译成 Go。结果: 一个列表页在服务端 **~30µs** 渲染完(goja + React + MUI 版本要 ~50ms), 客户端运行时 **gzip 后 ~6KB**(外加 ~4KB 的加载器), `go build` 出单个二进制, `delve` / `pprof` / `go test` 全能用。
 
 ## 快速开始
 
 ```bash
-git clone <repo> gotsx && cd gotsx
-./scripts/get-tailwind.sh          # 下载 Tailwind standalone 二进制到 .tools/(无需 Node)
-make dev-shop                      # 起 Temu 风格电商示例 → http://localhost:3000
-# 或:
-make dev-site                      # 本框架官网(方言组件库 + 可搜索语法参考)
-make dev-example                   # 分支集成 demo
+go install github.com/childrentime/gotsx/cmd/gotsx@latest
+gotsx new hello && cd hello   # 脚手架: 独立 Go 模块、宿主模块、页面、keyed 列表岛、action、tsconfig
+gotsx dev                     # http://localhost:3000 —— 改 app/**/*.tsx, 浏览器自动刷新
+go build -o hello . && ./hello -addr :8080        # 生产: 一个自包含的二进制
 ```
 
-构建 / 测试:
+开发框架本身:
 
 ```bash
-make gen      # 编译所有示例的方言 → gen/(gen 是 gitignore 的, 必须先跑)
-make build    # gen + go build ./...
-make test     # gen + go test ./...
+git clone https://github.com/childrentime/gotsx && cd gotsx
+go run ./cmd/gotsx tailwind   # 一次: 把 Tailwind standalone 二进制下到 .tools/(不需要 Node)
+make dev-shop                 # Temu 风格电商 demo → http://localhost:3000
+make dev-site                 # 本框架的文档站  ·  make dev-example  ·  make dev-admin
+make test                     # gen + go test ./...(会构建全部四个示例应用)
 ```
 
-> **注意**:`*/gen` 是 gitignore 的,干净检出里不存在。任何编译应用的命令之前必须先 `make gen`。CI 已按此顺序编排。
+> `*/gen` 是 gitignore 的, 任何编译示例应用的命令都要先 `make gen`。CI 已按此顺序编排。
 
-## 一份源码,两个编译器
+## 命令行
+
+| 命令 | 作用 |
+|---|---|
+| `gotsx new <dir>` | 在独立模块里脚手架一个应用(`--module`、`--tailwind`、`--replace <checkout>` 指向本地框架检出) |
+| `gotsx build [dir]` | hostgen → Tailwind → 方言 → `gen/`(Go + 客户端 JS + 内嵌资源 + 编辑器类型声明) |
+| `gotsx dev [dir]` | build + `go build` + 运行, 监视 `app/ host/ public/ main.go`, 改动即重启; 浏览器**自动刷新**(编译失败时旧版本继续跑); 重建是**增量的**(`host/` 没变就跳过 hostgen, Tailwind 并行: 改 TSX 约 15ms 编完) |
+| `gotsx check [dir]` | 只检查不生成; 诊断格式 `file:line:col: message`(`--json` 给工具); 有错 exit 1 |
+| `gotsx lsp` | LSP over stdio: 实时诊断、**hover**(类型、props 签名、宿主方法签名)、**跳转定义**(能跳进宿主方法的 Go 源码)—— VS Code / Neovim / Helix / Zed 见 [`editors/`](editors) |
+| `gotsx tailwind` | 下载当前系统的 Tailwind v4 standalone CLI(macOS、Linux、Windows) |
+
+`gotsx.json` 是可选的: 应用的导入路径从 `go.mod` 推断, `host/` 自动识别。
+
+## 一份源码, 两个编译器
 
 ```
-.tsx ──▶ 前端: 自研 TSX 子集 parser + 类型检查 + 方言围栏 + server/client 边界
+.tsx ──▶ 前端: 手写的 TSX 子集 parser + 类型检查 + 方言围栏 + 服务端/客户端边界
           ├─▶ Go 后端:  组件 → Go 函数, JSX → gotsx.El/Text/If/Nodes, hooks → 单趟语义,
-          │             host:* → 直接 Go 调用; //line 指令让报错指回 .tsx
+          │             host:* → 直接 Go 调用; //line 指令把报错指回 .tsx
           └─▶ JS 后端:  组件 → 函数, useState → signal, 依赖 signal 的 const → memo,
-                        JSX → el/t/text/cond/each; 走位 hydrate 不做 diff
-Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起 go build = 单二进制
+                        JSX → el/t/text/cond/each(写了 key={…} 就是 keyed); 走位 hydrate, 无 diff
+Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二进制
 ```
 
 | 目录 | 内容 |
 |---|---|
-| `compiler/` | `lexer` / `parser` / `check` / `gogen` / `jsgen` / `compile` |
-| `runtime/` | 节点模型、hydrate 标记、方言内建、HTTP、请求 Cookie、`Before` 钩子、宿主类型反射生成 |
-| `client/` | signals、`el/t/text/cond/each`、走位 hydrate、岛加载器、SPA 跳转、进度条、跨岛 `emit`/`on` |
-| `cmd/gotsx/` | `gotsx build` / `gotsx dev` |
-| `example/` `site/` `shop/` | 示例应用,也是集成测试对象 |
+| `compiler/` | `lexer` / `parser` / `check` / `gogen` / `jsgen` / `compile`(+ 给 check/LSP 用的 `Analyze`) |
+| `runtime/` | 节点模型、hydrate 标记、方言内建、HTTP(CSP/CSRF/gzip/缓存/健康检查/优雅关闭)、请求 cookie、`Before` 钩子、宿主类型反射、i18n、redirect/notFound |
+| `client/` | signals、`el/t/text/cond/each`(keyed 复用)、走位 hydrate、岛加载器、SPA 跳转、进度条、预取、跨岛 `emit`/`on`、i18n、dev 自动刷新 |
+| `cmd/gotsx/` | `new` / `build` / `dev` / `check` / `lsp` / `tailwind` |
+| `editors/` | VS Code(扩展源码)、Neovim、Helix、Zed 的 LSP 接入 |
+| `design/` | **gotsx UI**: 共享设计系统(shadcn 风格的中性 token + 组件类)—— Tailwind v4 层和一份等价的手写 CSS, 所有 demo 和 `gotsx new` 都用它 |
+| `example/` `site/` `shop/` `admin/` | 真实应用, 也是集成测试(`example` 有语言"厨房水槽"、流式 `Suspense` 面板和 `_layout` / `_404` / `_error` 约定) |
 
-## 语言:一门借 TSX 语法的静态子集
+## 语言: 借 TSX 语法的静态子集
 
-不是 TypeScript 的实现,而是**借 TSX 语法的静态语言**(AssemblyScript 的同类):类型系统限定在 Go 能表示的集合里,能推出静态类型且落在允许集合里就能编,否则是带 `文件:行:列` 的编译错误。
+它不是 TypeScript 的实现, 而是**一门借 TSX 语法的静态语言**(AssemblyScript 的表亲): 类型系统限定在 Go 能表示的集合里。每个表达式都能推出一个静态类型且落在允许集合里就能编译; 否则是带 `file:line:col` 的编译错误 —— 构建时、`gotsx check`、或编辑器里实时给出。
 
-- **有**:函数组件 / props / 解构+默认值、`string`(rune)/`number`(float64)/`boolean`/数组/`Record`/对象、`map filter find some every forEach includes indexOf join slice concat sort reduce reverse flat at`、字符串方法(含 `padStart/padEnd`)、`Object.keys/values`、`Math.*`、模板字符串、`&& || ?? 三元`、`=== !==`、`if / for-of / try`、`useState/useMemo/useEffect(+[])`、JSX、模块级 `const`、`host:*`(服务端)、`fetch`/DOM/`await`(客户端)。
-- **没有(报错,不是静默)**:`class`/`this`/原型、`any` 上取成员、`==`、`while`/`switch`、自定义泛型、`push/splice`、正则、`Date`(服务端走宿主)、给岛传 `children`。
+- **有**: 函数组件 / props / 解构 + 默认值; `string`(rune)/ `number`(float64)/ `boolean` / 数组 / `Record` / 已知形状的对象 / `interface … extends`; `if` / `for-of` / `for (;;)` / `while` / `switch` / `break` / `continue` / `try`; `++ -- += -= *= /= %=`; `&& || ?? 三元`; `=== !==`; 模板字符串; **正则字面量**(RE2 子集, 编译期校验: `re.test`, `s.match/replace/replaceAll/split/search`); 数组 `map filter find findIndex some every forEach includes indexOf lastIndexOf join slice concat sort reduce reverse flat at` 以及原地修改的 `push pop shift unshift splice`; 字符串方法(含 `padStart/padEnd/trimStart/trimEnd/localeCompare/at`); `Object.keys/values/hasOwn`、`delete m[k]`; `Math.*`; **`Date.now/Date.parse/isoDate`**; `useState/useMemo/useEffect(+[])`; 带 `key` 的 JSX; **`<Suspense fallback>`**(服务端); 模块级 `const`; `host:*`(服务端); `redirect()/notFound()`(服务端页面); `fetch`/DOM/`await`(客户端)。
+- **没有(是编译错误, 不是静默)**: `class`/`this`/原型/`new`; `any` 上的成员访问; `==`; `do-while`、`for-in`; 自定义泛型; 正则的 lookaround / 反向引用; 给岛传 `children`; 原地修改 `useState` 的数组(用 `setXs([...xs, x])`)。
+- **语义约定**(两端一致): 可选的原始类型用零值表示缺席(`""`/`0`/`false`), 所以 `??` 与 `||` 是同一个运算符; 可选的对象(如 `find()` 没找到)是假值且 `=== undefined`; `Record` 读缺席的键得到零值, `Object.hasOwn` 判断存在; 服务端的对象是值语义。完整清单是 [`STABILITY.md`](STABILITY.md) 的 Stable 层。
 
-完整语法表(可搜索)在官网 `site` 的 `/docs/language`。
+完整可搜索的语法表在 `site` 文档的 `/docs/language`。
 
 ## 特性
 
-- **宿主模块**:`import { models } from "host:data"` 背后是 Go,编译后是直接调用、零编组;类型由 Go 反射生成 `host.d.ts`。`(T, error)` 的 error 变 panic 由请求层 recover(包了 `ErrNotFound` 的回 404)。
-- **岛 + SPA 跳转**:页面零 JS,岛按需加载;跳转 = 拉 HTML → idiomorph morph,岛按 DOM 同一性存活,状态不丢;顶部进度条。
-- **走位 hydrate**:服务端只在响应式的文本/条件/列表上留标记,客户端按同一编译器给出的结构顺序认领节点,复用现有 DOM,不做 diff。
-- **会话 / 中间件**:请求 Cookie 进 `PageProps.Cookies`;`Options.Before` 钩子可种 cookie、做鉴权。
-- **Source map**:`go build` 报错和 panic 栈指回 `.tsx` 行号。
-- **Tailwind**:`class` 就是字符串,进程内跑 standalone CLI 扫描 `.tsx` 生成 CSS,无需 Node。
+- **宿主模块**: `import { models } from "host:data"` 背后是 Go; 编译后是零编组的直接调用, 类型反射成 `host.d.ts`。`(T, error)` 方法的 error 变成请求层 recover 的 panic(包了 `ErrNotFound` 的变成 404)。
+- **文件路由**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; 更具体的路由优先。**嵌套布局**: `pages/**/_layout.server.tsx`(`LayoutProps` = `PageProps` + `children`)包住其下的页面; `_404` / `_error` 变成 `gen.NotFound` / `gen.ErrorPage`。`redirect(url, status?)` 与 `notFound()` 中断渲染。
+- **流式 SSR**: `<Suspense fallback={…}>` 随外壳先发 fallback, children 在外壳 flush 之后**于自己的 goroutine 里**渲染; 多个边界并发求值、谁先完成先流入(乱序、可嵌套、错误隔离)。语言里没有 async: 慢的宿主调用就放进边界。
+- **岛 + SPA 跳转**: 页面零 JS; 岛按需加载; 跳转拉 HTML 再 morph(idiomorph), 岛按 DOM 同一性存活, 状态不丢; 顶部进度条与悬停预取让它秒开。
+- **keyed 列表**: `xs.map((x) => <li key={x.id}>…</li>)` 按 key 复用 / 移动 / 销毁 DOM —— 输入框、焦点、行内 effect 在重排后都保留; 不写 `key` 的列表和以前一样整块重建。
+- **走位 hydrate**: 服务端只标记响应式的文本/条件/列表; 客户端按同一编译器给出的顺序认领节点, 复用现有 DOM, 不 diff。
+- **会话 / 中间件**: 请求 cookie 进 `PageProps.Cookies`; `Options.Before` 钩子可以种 cookie 或做鉴权; `Options.Middleware` 是标准中间件链。
+- **Source map**: `go build` 报错与 panic 堆栈指回 `.tsx` 行号。
+- **编辑器**: `tsconfig.json` + 生成的 `app/.gen/gotsx.d.ts` / `host.d.ts` 让 TypeScript 工具链正常工作; `gotsx lsp` 补上方言自己的诊断、hover 与跳转定义(宿主方法直接跳进 Go 源码)。
+- **设计系统**: [`design/`](design) 提供 gotsx UI —— shadcn 风格的中性 token、暗色模式、组件类 —— 一份 Tailwind 层和一份等价的手写 CSS; 所有 demo 与脚手架出来的应用都用它, 新应用第一天就是成品的样子。
+- **Tailwind**: `class` 就是字符串; standalone CLI 进程内扫描 `.tsx` 生成 CSS —— 不需要 Node。
 
-## 国际化(v0.4,可选)
+## 生产可用
 
-开启 `Options.I18n` 即得完整 i18n:`t()`/`tv()`(插值)/`plural()`/`fmtNum`/`fmtCur`/`fmtDate`(服务端与客户端行为一致);**URL 前缀**(`/en/`,SEO 友好)或 **cookie/Accept-Language** 两种语言解析;自动 **hreflang**;loader **自动本地化内链**(站内导航保持同语言);`PageProps.Locale`。`shop` 已接入中/英 + 语言切换器,岛也能翻译。
-
-## C 端能力(v0.3,面向真实商业消费应用)
-
-- **SEO**:每页 title/description/**canonical**/**OpenGraph**/Twitter,商品页 **JSON-LD Product**(价格/库存/评分)+ 首页 WebSite SearchAction,**sitemap.xml** + **robots.txt**。新增 `jsonLd()` 安全内建。
-- **真实图片**:服务端生成商品棚拍 SVG(`/img/p/{id}`),`Img` 组件懒加载 + 固定宽高防 CLS + alt;`og:image` 用商品图。
-- **性能**:hover/touch **预取**,点击秒开(Core Web Vitals)。
-- **可观测性**:客户端错误 + 页面浏览遥测(`sendBeacon` → `/_gotsx/client-log`,`Options.OnClientEvent` 接收)。
-- **PWA**:manifest + 图标 + theme-color(可添加到主屏)。
-
-## 生产就绪(v0.2)
-
-- **HTTP 加固**:panic 恢复、安全头、**CSP+nonce**、gzip、**CSRF 同源校验**、内容哈希 immutable 缓存、请求 ID、访问日志、优雅关闭、`/healthz` `/readyz`、自定义 404/500、应用级中间件(鉴权)。
-- **单二进制部署**:`go:embed` 客户端与静态资源,`go build` 出一个自包含二进制,`scp` 即跑。
-- **客户端韧性**:响应式所有者/清理、按 DOM 范围重建块(嵌套表格刷新不残留)、岛错误边界(单岛失败不白屏)。
-- 见 [`SECURITY.md`](SECURITY.md)。默认 `-dev=false` 为生产模式;`gotsx dev` 自动开发模式。
+- **HTTP 加固**: panic 恢复、安全响应头、**CSP + 每响应 nonce**、gzip、**CSRF 同源校验**、内容哈希 immutable 缓存、请求 ID、访问日志、优雅关闭、`/healthz` `/readyz`、自定义 404/500、应用级中间件(鉴权)。
+- **单二进制部署**: `go:embed` 打包客户端与静态资源, `go build` 出一个 `scp` 即跑的二进制。
+- **客户端韧性**: 响应式所有者/清理、按范围重建的块、岛错误边界(一个岛坏了不白屏)。
+- **C 端能力**: 每页 SEO(canonical / OpenGraph / Twitter / JSON-LD / sitemap / robots)、懒加载图片、悬停预取、客户端遥测、PWA manifest。
+- **国际化**(可选): `t()` / `tv()` / `plural()` / `fmtNum` / `fmtCur` / `fmtDate` 两端一致; URL 前缀或 cookie/Accept-Language 解析语言; 自动 `hreflang`; 内链自动本地化。
+- 见 [`SECURITY.md`](SECURITY.md)。`-dev=false` 默认就是生产模式; `gotsx dev` 打开 dev 模式。
 
 ## 示例应用
 
 | 应用 | 是什么 |
 |---|---|
-| `admin` | **企业后台**:登录 / 受保护路由 / 用户表格(搜索排序分页)/ CRUD + 服务端校验 / 模态框 / toast / 权限。用来把框架往企业级压 |
-| `shop` | **Temu 风格全栈电商**:8 分类 / 192 商品 / 搜索排序分页 / 闪购倒计时 / 规格库存 / 购物车(金额服务端算)/ 心愿单 / 结算校验 / 订单 / 会话隔离 / 全接口模拟延迟 + 骨架屏 |
-| `site` | 本框架官网:方言写的组件库 + 可搜索语法参考(高亮由 Go 写的 tokenizer 提供) |
-| `example` | 分支集成管理 demo |
+| `admin` | **后台管理**: 登录 / 受保护路由 / 用户表格(搜索、排序、分页)/ CRUD + 服务端校验 / 模态框 / toast / 角色 |
+| `shop` | **Temu 风格全栈电商**: 8 分类 / 192 商品 / 搜索-排序-分页 / 秒杀倒计时 / 规格 + 库存 / 购物车 / 心愿单 / 结算校验 / 订单 / 会话 / 中英双语 |
+| `site` | 本框架的文档站: 方言写的组件库 + 可搜索的语法参考 |
+| `example` | 小 demo + **语言厨房水槽**(`/kitchen`: 循环、switch、原地修改、redirect、catch-all `/docs/a/b`、keyed 列表) |
+
+在线文档站(`site` 应用的静态导出): **https://childrentime.github.io/gotsx/**
 
 ## 测试
 
 ```bash
-make test        # 全部(含四应用集成构建)
-make test-fast   # 只跑编译器 + 运行时单元测试
+make test        # 全部(含构建四个应用与 gotsx new → build → check 端到端)
+make test-fast   # 只跑编译器 / 运行时 / CLI 单元测试
+make check       # 对每个示例应用跑 gotsx check
 ```
 
-- `compiler/codegen_test.go` —— 方言片段 → 断言生成的 Go / JS 结构。
-- `compiler/fence_test.go` —— 每种围栏违规 → 报错且带位置;合法程序不报错。
+- `compiler/codegen_test.go`、`compiler/lang_test.go` —— 方言片段 → 断言生成的 Go / JS 结构(含两个后端的标记一致性)。
+- `compiler/fence_test.go` —— 每种围栏违规 → 报错且带位置; 合法程序不报错。
 - `compiler/apps_test.go` —— 编译四个真实应用并 `go build` + `go vet`。
-- `runtime/{builtins,render,security}_test.go` —— 内建正确性、hydrate 标记、XSS 转义(文本/属性/岛 props/全链路)。
+- `runtime/*_test.go` —— 内建正确性、hydrate 标记、XSS 转义、HTTP 中间件、路由、redirect/notFound、dev 自动刷新、i18n。
+- `cmd/gotsx/cli_test.go` —— 临时模块里 `gotsx new` → `build` → `go build` → `check`。
 
 ## 安全
 
-见 [`SECURITY.md`](SECURITY.md)。要点:方言无"注入原始 HTML"的口子,文本/属性/岛 props 全部经 `html.EscapeString`(有测试);`host:*` 只在服务端,客户端碰不到 Go;写操作在 Go。CSRF / 认证 / 业务校验由使用者负责。**未经独立安全审计。**
+见 [`SECURITY.md`](SECURITY.md)。简言之: 方言没有"注入原始 HTML"的口子, 文本 / 属性 / 岛 props 都走 `html.EscapeString`(有测试); `host:*` 只在服务端, 客户端碰不到 Go; 写操作在 Go。CSRF 默认校验; 鉴权与业务校验由应用负责。**未经独立安全审计。**
 
 ## 路线图
 
-到"别人敢用"还缺:
+- [ ] **独立安全审计**(自查、威胁模型与 `govulncheck` 结果见 [`SECURITY.md`](SECURITY.md))
+- [ ] **1.0**: 冻结 [`STABILITY.md`](STABILITY.md) 的 Stable 层, 把 `Suspense` 与 LSP 从 Experimental 升级
 
-- [ ] **编辑器 LSP**(方言专有规则错误目前只在构建时报)
-- [ ] 语言长尾:`while`/`switch`、`push/splice`、自定义泛型、更多内建
-- [ ] `each` 的 keyed diff(现在列表整块重建,已能正确增删但会重建 DOM)
-- [ ] 流式 SSR、嵌套 layout 约定
-- [ ] `Record` 的"键不存在 vs 空串"语义(Go map 无法区分)
-- [ ] 增量编译、稳定性契约冻结、独立安全审计
-- [ ] 跨平台打磨(Windows)
-
-已做:两个后端、source map、测试套件、Tailwind、会话/中间件、跨岛事件、**生产 HTTP 加固(CSP/CSRF/gzip/缓存/健康检查/优雅关闭)**、**单二进制部署**、**响应式所有者与清理**、**岛错误边界**、**四个真实应用(含企业后台)**。
+已完成: 两个后端、source map、测试套件、Tailwind、会话/中间件、跨岛事件、生产 HTTP 加固、单二进制部署、响应式所有者与清理、岛错误边界、SEO / 图片 / 预取 / 遥测 / PWA、可选 i18n、四个真实应用、可安装模块 + `gotsx new`、语言长尾(循环、switch、原地数组方法、`interface extends`、正则、`Date`)、keyed 列表 diff、redirect / notFound / catch-all 路由、`gotsx check` + LSP(诊断、hover、跳转)+ 编辑器类型声明、增量重建的 dev 自动刷新、跨平台工具链、**流式 SSR(`Suspense`)**、**嵌套布局 / `_404` / `_error`**、**`Record` 缺席语义**、**稳定性契约**、**贯穿所有 demo 的设计系统**。
 
 ## 许可
 
-[MIT](LICENSE)。gotsx 借鉴了 React/Solid/Svelte 的思想与 Astro 的岛模型;运行时是自己的。
+[MIT](LICENSE)。gotsx 借了 React/Solid/Svelte 与 Astro 岛模型的思想; 运行时是自己的。

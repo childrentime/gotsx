@@ -1,7 +1,12 @@
-// gotsx: 方言编译器 + dev 循环。
+// gotsx: the dialect compiler, dev loop, project scaffolding and editor server.
 //
-//	gotsx build <appdir>   编译 app/ → gen/
-//	gotsx dev   <appdir>   编译 + go build + 运行, 监视 app/ 改动自动重来
+//	gotsx new <dir>          scaffold a new app (own Go module, host module, pages, islands, tsconfig)
+//	gotsx build [appdir]     compile app/ → gen/ (hostgen → tailwind → dialect → assets)
+//	gotsx dev   [appdir]     build + go build + run; watches app/ host/ public/ and restarts (browser auto-reloads)
+//	gotsx check [appdir]     type-check only, print diagnostics as file:line:col (--json for machines); exit 1 on errors
+//	gotsx lsp                Language Server Protocol over stdio (diagnostics for editors)
+//	gotsx tailwind           download the Tailwind standalone binary into .tools/ (no Node needed)
+//	gotsx version            print the version
 package main
 
 import (
@@ -10,82 +15,302 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
-	"gotsx/client"
-	"gotsx/compiler"
+	"github.com/childrentime/gotsx/client"
+	"github.com/childrentime/gotsx/compiler"
 )
 
+const usage = `gotsx — a TSX dialect that compiles to native Go
+
+Usage:
+  gotsx new <dir> [--module name] [--replace path] [--tailwind]
+  gotsx build [appdir]
+  gotsx dev   [appdir] [-addr :3000] [app flags...]
+  gotsx check [appdir] [--json]
+  gotsx lsp
+  gotsx tailwind [--dir .tools]
+  gotsx version
+
+appdir defaults to the current directory. It must contain app/ (pages, components, islands)
+and a Go module (go.mod here or in a parent); gotsx.json is optional and only overrides
+the inferred "module" / "hostPackage".`
+
+// appConfig: gotsx.json (optional). Everything can be inferred from go.mod.
 type appConfig struct {
-	Module      string `json:"module"`
-	HostPackage string `json:"hostPackage"`
+	Module      string `json:"module"`      // Go import path of the app package (default: from go.mod)
+	HostPackage string `json:"hostPackage"` // Go import path of the host package (default: <module>/host if host/ exists)
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Println("用法: gotsx build|dev <appdir>")
+	if len(os.Args) < 2 {
+		fmt.Println(usage)
 		os.Exit(2)
 	}
-	dir, _ := filepath.Abs(os.Args[2])
-	cfg := readConfig(dir)
+	args := os.Args[2:]
 	switch os.Args[1] {
+	case "new":
+		if err := newApp(args); err != nil {
+			fail(err)
+		}
 	case "build":
-		if err := build(dir, cfg); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+		dir := appDirArg(args)
+		cfg, err := readConfig(dir)
+		if err != nil {
+			fail(err)
+		}
+		if err := build(dir, cfg, false); err != nil {
+			fail(err)
 		}
 	case "dev":
-		dev(dir, cfg)
+		dir := appDirArg(args)
+		cfg, err := readConfig(dir)
+		if err != nil {
+			fail(err)
+		}
+		rest := args
+		if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+			rest = args[1:]
+		}
+		dev(dir, cfg, rest)
+	case "check":
+		dir := appDirArg(args)
+		asJSON := false
+		for _, a := range args {
+			if a == "--json" {
+				asJSON = true
+			}
+		}
+		os.Exit(check(dir, asJSON))
+	case "lsp":
+		if err := runLSP(); err != nil {
+			fail(err)
+		}
+	case "tailwind":
+		dir := ".tools"
+		for i, a := range args {
+			if a == "--dir" && i+1 < len(args) {
+				dir = args[i+1]
+			}
+		}
+		if err := downloadTailwind(dir); err != nil {
+			fail(err)
+		}
+	case "version", "--version", "-v":
+		fmt.Println("gotsx", version())
+	case "help", "--help", "-h":
+		fmt.Println(usage)
 	default:
-		fmt.Println("未知命令", os.Args[1])
+		fmt.Fprintln(os.Stderr, "unknown command:", os.Args[1])
+		fmt.Println(usage)
 		os.Exit(2)
 	}
 }
 
-func readConfig(dir string) appConfig {
-	var cfg appConfig
-	b, err := os.ReadFile(filepath.Join(dir, "gotsx.json"))
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "缺少 gotsx.json:", err)
-		os.Exit(1)
-	}
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		fmt.Fprintln(os.Stderr, "gotsx.json:", err)
-		os.Exit(1)
-	}
-	return cfg
+func fail(err error) {
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
 }
 
-func build(dir string, cfg appConfig) error {
-	t := time.Now()
-	// 宿主类型: 应用自带 cmd/hostgen 就先跑一下
-	if _, err := os.Stat(filepath.Join(dir, "cmd", "hostgen")); err == nil {
-		cmd := exec.Command("go", "run", "./cmd/hostgen", "app/.gen")
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("hostgen 失败: %v\n%s", err, out)
+// appDirArg: first non-flag argument, else "."
+func appDirArg(args []string) string {
+	dir := "."
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		dir = args[0]
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		fail(err)
+	}
+	return abs
+}
+
+// version: the module version this binary was built from ("(devel)" for go run inside the repo)
+func version() string {
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		return bi.Main.Version
+	}
+	return "(devel)"
+}
+
+// runtimeImport: the Go import path of the gotsx runtime, derived from this binary's own module path,
+// so a fork keeps working and the generated code always imports the gotsx it was built with.
+func runtimeImport() string {
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Path != "" {
+		return bi.Main.Path + "/runtime"
+	}
+	return "github.com/childrentime/gotsx/runtime"
+}
+
+// frameworkModule: this binary's module path (e.g. github.com/childrentime/gotsx)
+func frameworkModule() string {
+	return strings.TrimSuffix(runtimeImport(), "/runtime")
+}
+
+// ---------- config ----------
+
+// readConfig resolves the app's Go import path and host package.
+// Order: gotsx.json values → inferred from the nearest go.mod → host/ directory presence.
+func readConfig(dir string) (appConfig, error) {
+	var cfg appConfig
+	if b, err := os.ReadFile(filepath.Join(dir, "gotsx.json")); err == nil {
+		if err := json.Unmarshal(b, &cfg); err != nil {
+			return cfg, fmt.Errorf("gotsx.json: %w", err)
 		}
 	}
-	if err := runTailwind(dir); err != nil {
-		return err
+	if _, err := os.Stat(filepath.Join(dir, "app")); err != nil {
+		return cfg, fmt.Errorf("%s: no app/ directory (run `gotsx new <dir>` to scaffold one)", dir)
 	}
+	if cfg.Module == "" {
+		mod, modDir, err := findGoModule(dir)
+		if err != nil {
+			return cfg, err
+		}
+		rel, _ := filepath.Rel(modDir, dir)
+		cfg.Module = mod
+		if rel != "." && rel != "" {
+			cfg.Module = mod + "/" + filepath.ToSlash(rel)
+		}
+	}
+	if cfg.HostPackage == "" {
+		if st, err := os.Stat(filepath.Join(dir, "host")); err == nil && st.IsDir() {
+			cfg.HostPackage = cfg.Module + "/host"
+		}
+	}
+	return cfg, nil
+}
+
+// findGoModule walks up from dir to the nearest go.mod and returns (module path, its directory)
+func findGoModule(dir string) (string, string, error) {
+	for d := dir; ; d = filepath.Dir(d) {
+		b, err := os.ReadFile(filepath.Join(d, "go.mod"))
+		if err == nil {
+			for _, ln := range strings.Split(string(b), "\n") {
+				ln = strings.TrimSpace(ln)
+				if strings.HasPrefix(ln, "module ") {
+					return strings.TrimSpace(strings.TrimPrefix(ln, "module ")), d, nil
+				}
+			}
+			return "", "", fmt.Errorf("%s: no module line", filepath.Join(d, "go.mod"))
+		}
+		if filepath.Dir(d) == d {
+			return "", "", fmt.Errorf("%s: no go.mod found here or in any parent (add one, or a gotsx.json with \"module\")", dir)
+		}
+	}
+}
+
+// ---------- build ----------
+
+// build: hostgen ∥ tailwind → dialect compiler. incremental (dev loop) skips hostgen while host/ is unchanged —
+// it is a `go run`, the slowest step — so a TSX edit rebuilds in the time of the compiler alone.
+func build(dir string, cfg appConfig, incremental bool) error {
+	t := time.Now()
+	var wg sync.WaitGroup
+	var hostErr, twErr error
+	var hostMs, twMs time.Duration
+	hostgen := "skipped"
+	if _, err := os.Stat(filepath.Join(dir, "cmd", "hostgen")); err == nil && (!incremental || hostStale(dir)) {
+		hostgen = "ran"
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t0 := time.Now()
+			cmd := exec.Command("go", "run", "./cmd/hostgen", filepath.Join("app", ".gen"))
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				hostErr = fmt.Errorf("hostgen failed: %v\n%s", err, out)
+			}
+			hostMs = time.Since(t0)
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t0 := time.Now()
+		twErr = runTailwind(dir)
+		twMs = time.Since(t0)
+	}()
+	wg.Wait()
+	if hostErr != nil {
+		return hostErr
+	}
+	if twErr != nil {
+		return twErr
+	}
+	t1 := time.Now()
 	rep, err := compiler.Build(compiler.Config{
 		AppDir:     filepath.Join(dir, "app"),
 		OutDir:     filepath.Join(dir, "gen"),
 		Module:     cfg.Module,
 		HostPkg:    cfg.HostPackage,
-		RuntimePkg: "gotsx/runtime",
+		RuntimePkg: runtimeImport(),
 		ClientFS:   client.FS,
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("gotsx: 编译 %d 个模块 → 路由 %v, 岛 %v (%s)\n", len(rep.Modules), rep.Routes, rep.Islands, time.Since(t).Round(time.Millisecond))
+	steps := fmt.Sprintf("compile %s", time.Since(t1).Round(time.Millisecond))
+	if hostgen == "ran" {
+		steps = fmt.Sprintf("hostgen %s ∥ ", hostMs.Round(time.Millisecond)) + steps
+	} else if incremental {
+		steps = "hostgen skipped (host/ unchanged) · " + steps
+	}
+	if twMs > 0 && fileExists(filepath.Join(dir, "app", "tailwind.css")) {
+		steps = fmt.Sprintf("tailwind %s ∥ ", twMs.Round(time.Millisecond)) + steps
+	}
+	fmt.Printf("gotsx: compiled %d modules → routes %v, islands %v (%s: %s)\n", len(rep.Modules), rep.Routes, rep.Islands, time.Since(t).Round(time.Millisecond), steps)
 	return nil
 }
 
-func dev(dir string, cfg appConfig) {
+// hostStale: host.json is older than anything under host/, cmd/hostgen/ or go.mod (or missing)
+func hostStale(dir string) bool {
+	st, err := os.Stat(filepath.Join(dir, "app", ".gen", "host.json"))
+	if err != nil {
+		return true
+	}
+	return latestMtime(filepath.Join(dir, "host"), filepath.Join(dir, "cmd", "hostgen"), filepath.Join(dir, "go.mod")).After(st.ModTime())
+}
+
+// check: analyze only; prints diagnostics. Returns the process exit code.
+func check(dir string, asJSON bool) int {
+	if _, err := os.Stat(filepath.Join(dir, "app")); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: no app/ directory\n", dir)
+		return 2
+	}
+	diags, err := compiler.Analyze(filepath.Join(dir, "app"), nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if asJSON {
+		if diags == nil {
+			diags = []compiler.Diagnostic{}
+		}
+		json.NewEncoder(os.Stdout).Encode(diags)
+	} else {
+		for _, d := range diags {
+			rel, err := filepath.Rel(dir, d.File)
+			if err != nil {
+				rel = d.File
+			}
+			fmt.Printf("%s:%d:%d: %s\n", rel, d.Line, d.Col, d.Msg)
+		}
+		if len(diags) == 0 {
+			fmt.Println("gotsx: ok")
+		}
+	}
+	if len(diags) > 0 {
+		return 1
+	}
+	return 0
+}
+
+// ---------- dev ----------
+
+func dev(dir string, cfg appConfig, appArgs []string) {
 	var proc *exec.Cmd
 	stop := func() {
 		if proc != nil && proc.Process != nil {
@@ -96,48 +321,57 @@ func dev(dir string, cfg appConfig) {
 	}
 	gen := 0
 	run := func() {
-		// 先构建, 成功了才换进程: 编译错误期间旧服务继续跑
-		if err := build(dir, cfg); err != nil {
-			fmt.Fprintln(os.Stderr, "\n"+err.Error()+"\n(旧版本继续运行)")
+		// build first; only swap the process on success so the old server keeps serving during a compile error
+		if err := build(dir, cfg, gen > 0); err != nil {
+			fmt.Fprintln(os.Stderr, "\n"+err.Error()+"\n(the previous build keeps running)")
 			return
 		}
 		gen++
-		bin := filepath.Join(dir, ".gotsx", fmt.Sprintf("app-%d", gen%2)) // 交替文件名, 不覆盖正在运行的二进制
+		bin := filepath.Join(dir, ".gotsx", fmt.Sprintf("app-%d%s", gen%2, exeSuffix())) // alternate names: never overwrite the running binary
 		os.MkdirAll(filepath.Dir(bin), 0o755)
 		t := time.Now()
 		gb := exec.Command("go", "build", "-o", bin, ".")
 		gb.Dir = dir
 		if out, err := gb.CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stderr, "\ngo build 失败:\n%s\n(旧版本继续运行)\n", out)
+			fmt.Fprintf(os.Stderr, "\ngo build failed:\n%s\n(the previous build keeps running)\n", out)
 			return
 		}
 		fmt.Printf("gotsx: go build %s\n", time.Since(t).Round(time.Millisecond))
 		stop()
-		proc = exec.Command(bin, append([]string{"-dev"}, os.Args[3:]...)...)
+		proc = exec.Command(bin, append([]string{"-dev"}, appArgs...)...)
 		proc.Dir = dir
 		proc.Stdout, proc.Stderr = os.Stdout, os.Stderr
 		if err := proc.Start(); err != nil {
-			fmt.Fprintln(os.Stderr, "启动失败:", err)
+			fmt.Fprintln(os.Stderr, "start failed:", err)
 		}
 	}
 	run()
-	last := latestMtime(filepath.Join(dir, "app"), filepath.Join(dir, "host"), filepath.Join(dir, "public"))
+	watch := []string{filepath.Join(dir, "app"), filepath.Join(dir, "host"), filepath.Join(dir, "public"), filepath.Join(dir, "main.go")}
+	last := latestMtime(watch...)
 	for {
 		time.Sleep(400 * time.Millisecond)
-		now := latestMtime(filepath.Join(dir, "app"), filepath.Join(dir, "host"), filepath.Join(dir, "public"))
+		now := latestMtime(watch...)
 		if now.After(last) {
 			last = now
-			fmt.Println("gotsx: 源码有改动, 重新编译…")
+			fmt.Println("gotsx: source changed, rebuilding…")
 			run()
 		}
 	}
 }
 
-func latestMtime(dirs ...string) time.Time {
+func exeSuffix() string {
+	if isWindows() {
+		return ".exe"
+	}
+	return ""
+}
+
+func latestMtime(paths ...string) time.Time {
 	var latest time.Time
-	for _, d := range dirs {
+	genDir := string(filepath.Separator) + ".gen"
+	for _, d := range paths {
 		filepath.WalkDir(d, func(p string, e os.DirEntry, err error) error {
-			if err != nil || strings.Contains(p, "/.gen") {
+			if err != nil || strings.Contains(p, genDir) {
 				return nil
 			}
 			if info, err := e.Info(); err == nil && info.ModTime().After(latest) {
@@ -149,29 +383,18 @@ func latestMtime(dirs ...string) time.Time {
 	return latest
 }
 
-// Tailwind: 有 app/tailwind.css 就用 standalone CLI(不需要 Node)扫描 app/**/*.tsx 生成 public/tailwind.css。
-// 二进制查找顺序: $GOTSX_TAILWIND → <repo>/.tools/tailwindcss → PATH 里的 tailwindcss
+// ---------- tailwind ----------
+
+// runTailwind: if app/tailwind.css exists, run the standalone CLI (no Node) to scan app/**/*.tsx into public/tailwind.css.
+// Binary lookup: $GOTSX_TAILWIND → <dir or any parent>/.tools/tailwindcss[.exe] → tailwindcss on PATH
 func runTailwind(dir string) error {
 	in := filepath.Join(dir, "app", "tailwind.css")
 	if _, err := os.Stat(in); err != nil {
 		return nil
 	}
-	bin := os.Getenv("GOTSX_TAILWIND")
+	bin := findTailwind(dir)
 	if bin == "" {
-		for d := dir; d != "/" && d != "."; d = filepath.Dir(d) {
-			if p := filepath.Join(d, ".tools", "tailwindcss"); fileExists(p) {
-				bin = p
-				break
-			}
-		}
-	}
-	if bin == "" {
-		if p, err := exec.LookPath("tailwindcss"); err == nil {
-			bin = p
-		}
-	}
-	if bin == "" {
-		fmt.Fprintln(os.Stderr, "gotsx: 找到 app/tailwind.css 但没有 tailwindcss 二进制(设置 GOTSX_TAILWIND 或放到 .tools/), 跳过")
+		fmt.Fprintln(os.Stderr, "gotsx: app/tailwind.css found but no tailwindcss binary (run `gotsx tailwind`, or set GOTSX_TAILWIND); skipping")
 		return nil
 	}
 	t := time.Now()
@@ -179,10 +402,30 @@ func runTailwind(dir string) error {
 	cmd := exec.Command(bin, "-i", in, "-o", filepath.Join(dir, "public", "tailwind.css"), "--minify")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("tailwind 失败: %v\n%s", err, out)
+		return fmt.Errorf("tailwind failed: %v\n%s", err, out)
 	}
-	fmt.Printf("gotsx: tailwind %s\n", time.Since(t).Round(time.Millisecond))
+	_ = t
 	return nil
+}
+
+func findTailwind(dir string) string {
+	if bin := os.Getenv("GOTSX_TAILWIND"); bin != "" {
+		return bin
+	}
+	for d := dir; ; d = filepath.Dir(d) {
+		for _, name := range []string{"tailwindcss", "tailwindcss.exe"} {
+			if p := filepath.Join(d, ".tools", name); fileExists(p) {
+				return p
+			}
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
+	}
+	if p, err := exec.LookPath("tailwindcss"); err == nil {
+		return p
+	}
+	return ""
 }
 
 func fileExists(p string) bool {

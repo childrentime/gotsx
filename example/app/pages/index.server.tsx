@@ -1,22 +1,31 @@
 import type { PageProps } from "gotsx";
+import { Suspense } from "gotsx";
 import { models } from "host:data";        // Go 实现: 编译后是直接的 Go 调用, 零编组
 import { fmtNumber } from "host:intl";
-import Layout from "../components/Layout.server";
 import ModelCard from "../components/ModelCard.server";
+import Stats from "../components/Stats.server";
 
 export default function Home({ query }: PageProps) {
   const q = query.q ?? "";
   const list = models.search(q);           // 同步: 并发由 goroutine 提供, 语言里没有 async
   return (
-    <Layout title="模型">
-      <form method="get" action="/" class="search">
-        <input name="q" value={q} placeholder="搜索模型…(回车提交, 走 SPA 跳转)" />
+    <div class="stack">
+      <div>
+        <h1>Models</h1>
+        <p class="muted">A small catalog served by a Go host module. The stats panel below is a streaming <code>Suspense</code> boundary: the page ships first, the slow query fills in.</p>
+      </div>
+      <Suspense fallback={<div class="card grid grid-3"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div></div>}>
+        <Stats />
+      </Suspense>
+      <form method="get" action="/" class="row">
+        <input name="q" value={q} placeholder="Search models… (Enter submits, SPA navigation)" />
+        <button class="btn">Search</button>
       </form>
       <p class="muted">
-        {fmtNumber(list.length)} 个模型{q !== "" && <span> · 匹配 “{q}”</span>}
+        {fmtNumber(list.length)} models{q !== "" && <span> · matching “{q}”</span>}
       </p>
-      <div class="grid">{list.map((m) => <ModelCard model={m} />)}</div>
-      {list.length === 0 && <p class="empty">没有匹配的模型</p>}
-    </Layout>
+      <div class="grid grid-2">{list.map((m) => <ModelCard model={m} />)}</div>
+      {list.length === 0 && <p class="empty">No matching models</p>}
+    </div>
   );
 }

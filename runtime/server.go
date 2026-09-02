@@ -30,24 +30,39 @@ type Route struct {
 	Render  func(PageProps) Node
 }
 
+// Match: 段 "{id}" 是参数; 最后一段 "{...rest}" 是 catch-all(匹配 ≥1 个剩余段, 参数值是用 / 拼起来的路径)
 func (r Route) Match(path string) (map[string]string, bool) {
 	p := strings.Trim(path, "/")
 	var segs []string
 	if p != "" {
 		segs = strings.Split(p, "/")
 	}
-	if len(segs) != len(r.Segs) {
+	n := len(r.Segs)
+	catchAll := n > 0 && strings.HasPrefix(r.Segs[n-1], "{...")
+	if catchAll {
+		if len(segs) < n {
+			return nil, false
+		}
+	} else if len(segs) != n {
 		return nil, false
 	}
 	params := map[string]string{}
 	for i, s := range r.Segs {
-		if strings.HasPrefix(s, "{") {
+		switch {
+		case catchAll && i == n-1:
+			params[s[4:len(s)-1]] = strings.Join(segs[i:], "/")
+		case strings.HasPrefix(s, "{"):
 			params[s[1:len(s)-1]] = segs[i]
-		} else if s != segs[i] {
+		case s != segs[i]:
 			return nil, false
 		}
 	}
 	return params, true
+}
+
+// IsCatchAll: 路由是否以 catch-all 段结尾
+func (r Route) IsCatchAll() bool {
+	return len(r.Segs) > 0 && strings.HasPrefix(r.Segs[len(r.Segs)-1], "{...")
 }
 
 type Options struct {
@@ -91,6 +106,7 @@ type server struct {
 	manifest string
 	loader   string
 	logURL   string
+	bootID   string // 每次进程启动不同: dev 模式下浏览器据此判断服务重启过 → 自动刷新
 }
 
 type ctxKey int
@@ -134,15 +150,15 @@ func (s *server) publicFS() fs.FS {
 
 func Serve(opt Options) error {
 	s := &server{opt: opt}
+	s.bootID = randomHex(6)
 	configureI18n(opt.I18n)
 	s.scanClient()
-	routes := append([]Route(nil), opt.Routes...)
-	sort.SliceStable(routes, func(i, j int) bool {
-		return strings.Count(routes[i].Pattern, "{") < strings.Count(routes[j].Pattern, "{")
-	})
-	s.opt.Routes = routes
+	s.opt.Routes = sortRoutes(opt.Routes)
 
 	mux := http.NewServeMux()
+	if opt.Dev {
+		mux.HandleFunc("GET /_gotsx/dev", s.devEvents)
+	}
 	mux.Handle("GET /_gotsx/", s.assetCache(http.StripPrefix("/_gotsx/", http.FileServer(http.FS(s.clientFS())))))
 	if pf := s.publicFS(); pf != nil {
 		mux.Handle("GET /public/", s.assetCache(http.StripPrefix("/public/", http.FileServer(http.FS(pf)))))
@@ -204,7 +220,7 @@ func Serve(opt Options) error {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		<-sig
-		log.Printf("gotsx: 收到关闭信号, 优雅退出中…")
+		log.Printf("gotsx: shutdown signal received, draining…")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if opt.OnShutdown != nil {
@@ -218,7 +234,7 @@ func Serve(opt Options) error {
 	if opt.Dev {
 		mode = "dev"
 	}
-	log.Printf("gotsx: 监听 http://localhost%s  路由 %d 条  模式=%s", opt.Addr, len(routes), mode)
+	log.Printf("gotsx: listening on http://localhost%s  routes=%d  mode=%s", opt.Addr, len(s.opt.Routes), mode)
 	err := srv.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		<-idle
@@ -226,6 +242,71 @@ func Serve(opt Options) error {
 	}
 	return err
 }
+
+// sortRoutes: 具体的优先 —— 非 catch-all 在 catch-all 之前; 参数少的在前; 参数一样多时静态段多的在前; 同级保持声明顺序
+func sortRoutes(in []Route) []Route {
+	routes := append([]Route(nil), in...)
+	key := func(r Route) (catchAll bool, params, static int) {
+		for _, s := range r.Segs {
+			if strings.HasPrefix(s, "{") {
+				params++
+			} else {
+				static++
+			}
+		}
+		return r.IsCatchAll(), params, static
+	}
+	sort.SliceStable(routes, func(i, j int) bool {
+		ci, pi, si := key(routes[i])
+		cj, pj, sj := key(routes[j])
+		if ci != cj {
+			return !ci
+		}
+		if pi != pj {
+			return pi < pj
+		}
+		return si > sj
+	})
+	return routes
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// devEvents: dev 模式的 SSE 流。每条消息带本进程的 bootID; gotsx dev 重启进程后浏览器重连拿到新 id → 整页刷新
+func (s *server) devEvents(w http.ResponseWriter, r *http.Request) {
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Accel-Buffering", "no")
+	http.NewResponseController(w).SetWriteDeadline(time.Time{}) // 长连接: 关掉本响应的写超时
+	fmt.Fprintf(w, "retry: 300\ndata: %s\n\n", s.bootID)
+	fl.Flush()
+	tick := time.NewTicker(15 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-tick.C:
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", s.bootID); err != nil {
+				return
+			}
+			fl.Flush()
+		}
+	}
+}
+
+// fillScript: 流式 Suspense 的客户端一半 —— 把 <template data-gotsx-fill> 换进对应的 <gotsx-suspense>;
+// 目标还不在文档里(父边界尚未填充)就先留着, 每次填充后再扫一遍。岛由 loader 的 reconcile 挂载。
+const fillScript = `window.__gotsxFill=function(id){var t=document.querySelector('template[data-gotsx-fill="'+id+'"]'),e=document.getElementById(id);if(!t||!e)return;e.replaceChildren(t.content);e.setAttribute("data-ready","");t.remove();if(window.__gotsxReconcile)window.__gotsxReconcile();document.querySelectorAll("template[data-gotsx-fill]").forEach(function(x){window.__gotsxFill(x.getAttribute("data-gotsx-fill"))})}`
 
 // ---------- 中间件 ----------
 
@@ -262,6 +343,7 @@ func (s *statusRecorder) Flush() {
 		f.Flush()
 	}
 }
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 func accessLogMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -360,6 +442,7 @@ func (g *gzipWriter) Flush() {
 		f.Flush()
 	}
 }
+func (g *gzipWriter) Unwrap() http.ResponseWriter { return g.ResponseWriter }
 
 func compressible(ct string) bool {
 	for _, p := range []string{"text/html", "text/css", "text/javascript", "application/javascript", "application/json", "image/svg", "text/plain"} {
@@ -416,7 +499,7 @@ func (s *server) csrfGuard(pattern string, h http.HandlerFunc) http.HandlerFunc 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.opt.DisableCSRF && unsafeMethod(r.Method) && !SameOrigin(r) {
 			id, _ := r.Context().Value(ctxReqID).(string)
-			log.Printf("CSRF 拒绝 %s %s id=%s origin=%q referer=%q", r.Method, r.URL.Path, id, r.Header.Get("Origin"), r.Header.Get("Referer"))
+			log.Printf("CSRF rejected %s %s id=%s origin=%q referer=%q", r.Method, r.URL.Path, id, r.Header.Get("Origin"), r.Header.Get("Referer"))
 			http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 			return
 		}
@@ -526,7 +609,13 @@ func (s *server) page(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := time.Now()
-	html, err := s.render(func() Node { return route.Render(props) })
+	var seq uint32
+	var pending []*Pending
+	html, err := s.render(func() Node {
+		var out string
+		out, pending = RenderPending(route.Render(props), &seq)
+		return RawNode(out)
+	})
 	us := time.Since(t).Microseconds()
 	if err != nil {
 		var he *HostError
@@ -534,13 +623,85 @@ func (s *server) page(w http.ResponseWriter, r *http.Request) {
 			s.serve404(w, r, props)
 			return
 		}
+		var re *RedirectError
+		if errors.As(err, &re) {
+			http.Redirect(w, r, re.URL, re.Status)
+			return
+		}
 		id, _ := r.Context().Value(ctxReqID).(string)
-		log.Printf("渲染失败 %s id=%s: %v", r.URL.Path, id, err)
+		log.Printf("render failed %s id=%s: %v", r.URL.Path, id, err)
 		s.serveError(w, r, http.StatusInternalServerError, err)
 		return
 	}
 	w.Header().Set("Server-Timing", fmt.Sprintf("go;dur=%.3f", float64(us)/1000))
 	s.writeDoc(w, r, http.StatusOK, html)
+	if len(pending) > 0 {
+		s.streamPending(w, r, pending, &seq)
+	}
+}
+
+// streamPending: 外壳已经写出; 每个 Suspense 边界在自己的 goroutine 里渲染, 完成一个就追加一个
+// <template data-gotsx-fill="id">…</template><script>__gotsxFill("id")</script> 并 flush。嵌套边界递归处理。
+// 边界内的错误不能再变成 500(头已发出): Dev 下把错误文本填进去, 生产下留空并记日志。
+func (s *server) streamPending(w http.ResponseWriter, r *http.Request, pending []*Pending, seq *uint32) {
+	fl, _ := w.(http.Flusher)
+	flush := func() {
+		if fl != nil {
+			fl.Flush()
+		}
+	}
+	flush()
+	nonce, _ := r.Context().Value(ctxNonce).(string)
+	na := ""
+	if nonce != "" {
+		na = ` nonce="` + nonce + `"`
+	}
+	type fill struct{ id, html string }
+	ch := make(chan fill)
+	var wg sync.WaitGroup
+	var resolve func(p *Pending)
+	resolve = func(p *Pending) {
+		defer wg.Done()
+		var out string
+		var nested []*Pending
+		err := func() (err error) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					err = fmt.Errorf("%v", rec)
+				}
+			}()
+			out, nested = RenderPending(p.Fn(), seq)
+			return nil
+		}()
+		if err != nil {
+			id, _ := r.Context().Value(ctxReqID).(string)
+			log.Printf("suspense %s failed %s id=%s: %v", p.ID, r.URL.Path, id, err)
+			out = ""
+			if s.opt.Dev {
+				out = `<pre class="gotsx-error" style="color:#dc2626;white-space:pre-wrap">` + htmlEscape(err.Error()) + `</pre>`
+			}
+		}
+		for _, n := range nested {
+			wg.Add(1)
+			go resolve(n)
+		}
+		ch <- fill{p.ID, out}
+	}
+	for _, p := range pending {
+		wg.Add(1)
+		go resolve(p)
+	}
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+	for f := range ch {
+		if r.Context().Err() != nil {
+			continue // 客户端已断开: 把剩下的 goroutine 排空
+		}
+		fmt.Fprintf(w, `<template data-gotsx-fill="%s">%s</template><script%s>__gotsxFill("%s")</script>`, f.id, f.html, na, f.id)
+		flush()
+	}
 }
 
 func (s *server) propsFor(r *http.Request, params map[string]string) PageProps {
@@ -569,6 +730,9 @@ func (s *server) writeDoc(w http.ResponseWriter, r *http.Request, status int, ht
 	if s.logURL != "" {
 		gv = strings.TrimSuffix(gv, "}") + `,"log":"` + s.logURL + `"}`
 	}
+	if s.opt.Dev {
+		gv = strings.TrimSuffix(gv, "}") + `,"dev":true}`
+	}
 	head := ""
 	if i18nCfg != nil {
 		locale, _ := r.Context().Value(ctxLocale).(string)
@@ -594,8 +758,16 @@ func (s *server) writeDoc(w http.ResponseWriter, r *http.Request, status int, ht
 		hb.WriteString(`<link rel="alternate" hreflang="x-default" href="` + scheme + "://" + r.Host + LPath(i18nCfg.Default, path) + `">`)
 		head = hb.String()
 	}
-	inject := head + fmt.Sprintf(`<script%s>window.__GOTSX=%s</script><script type="module" src="%s"></script>`, na, gv, s.loader)
-	out := "<!DOCTYPE html>" + strings.Replace(html, "</head>", inject+"</head>", 1)
+	inject := head + fmt.Sprintf(`<script%s>window.__GOTSX=%s;%s</script><script type="module" src="%s"></script>`, na, gv, fillScript, s.loader)
+	var out string
+	switch {
+	case strings.Contains(html, "</head>"):
+		out = "<!DOCTYPE html>" + strings.Replace(html, "</head>", inject+"</head>", 1)
+	case strings.Contains(html, "</body>"): // 页面没写 <head>: 注入到 body 末尾(loader 是 module, 位置不影响)
+		out = "<!DOCTYPE html>" + strings.Replace(html, "</body>", inject+"</body>", 1)
+	default:
+		out = "<!DOCTYPE html>" + html + inject
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, ok := w.Header()["Cache-Control"]; !ok {
 		w.Header().Set("Cache-Control", "no-store")
@@ -613,14 +785,14 @@ func (s *server) serve404(w http.ResponseWriter, r *http.Request, props PageProp
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
-	io.WriteString(w, "<!DOCTYPE html><meta charset=utf-8><title>404</title><h1>404 · 页面不存在</h1>")
+	io.WriteString(w, "<!DOCTYPE html><meta charset=utf-8><title>404</title><h1>404 · Not Found</h1>")
 }
 
 func (s *server) serveError(w http.ResponseWriter, r *http.Request, status int, cause error) {
 	// 已经写过响应头就没法补救, 直接返回
 	shown := cause
 	if !s.opt.Dev {
-		shown = errors.New("服务器内部错误")
+		shown = errors.New("Internal Server Error")
 	}
 	if s.opt.ErrorPage != nil {
 		props := s.propsFor(r, nil)
@@ -631,7 +803,7 @@ func (s *server) serveError(w http.ResponseWriter, r *http.Request, status int, 
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	msg := "服务器内部错误"
+	msg := "Internal Server Error"
 	if s.opt.Dev {
 		msg = cause.Error()
 	}
@@ -643,6 +815,8 @@ func (s *server) render(fn func() Node) (out string, err error) {
 		if rec := recover(); rec != nil {
 			switch e := rec.(type) {
 			case *HostError:
+				err = e
+			case *RedirectError:
 				err = e
 			case *ThrowError:
 				err = e

@@ -7,6 +7,26 @@
           "kind": "field",
           "go": "Models",
           "type": "ModelStore"
+        },
+        "stats": {
+          "kind": "method",
+          "go": "Stats",
+          "ret": {
+            "type": "Stats",
+            "go": "host.Stats"
+          },
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 86
+        },
+        "trending": {
+          "kind": "method",
+          "go": "Trending",
+          "ret": {
+            "type": "Model[]",
+            "go": "[]host.Model"
+          },
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 96
         }
       }
     },
@@ -25,7 +45,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 120
         },
         "fmtNumber": {
           "kind": "method",
@@ -39,7 +61,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 108
         },
         "now": {
           "kind": "method",
@@ -47,7 +71,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 128
         }
       }
     }
@@ -118,7 +144,9 @@
             "type": "Model",
             "go": "host.Model"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 53
         },
         "like": {
           "kind": "method",
@@ -133,7 +161,9 @@
             "type": "number",
             "go": "int"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 64
         },
         "list": {
           "kind": "method",
@@ -141,7 +171,9 @@
           "ret": {
             "type": "Model[]",
             "go": "[]host.Model"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 30
         },
         "search": {
           "kind": "method",
@@ -155,9 +187,29 @@
           "ret": {
             "type": "Model[]",
             "go": "[]host.Model"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/example/host/host.go",
+          "line": 38
         }
       }
+    },
+    "Stats": {
+      "go": "host.Stats",
+      "fields": [
+        {
+          "name": "total",
+          "go": "Total",
+          "type": "number",
+          "gotype": "int"
+        },
+        {
+          "name": "likes",
+          "go": "Likes",
+          "type": "number",
+          "gotype": "int"
+        }
+      ],
+      "methods": {}
     }
   }
 }

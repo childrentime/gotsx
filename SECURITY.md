@@ -1,26 +1,59 @@
-# 安全说明
+# Security
 
-gotsx 是实验性项目(v0.1),尚未经过独立安全审计。请勿用于处理不可信输入的生产系统,除非你自己完成了审计。
+gotsx is pre-1.0 and has **not** been independently audited. Do not put it in front of untrusted input in
+production unless you have reviewed it yourself.
 
-## 已建立的防线(有测试覆盖)
+## Defenses in place (all covered by tests)
 
-- **XSS / HTML 注入**:方言里没有 `dangerouslySetInnerHTML`,也没有任何"注入原始 HTML"的口子。
-  - 文本节点(`{expr}`)经 `gotsx.Text` / `gotsx.Dyn` → `html.EscapeString`。
-  - 元素属性经 `gotsx.A` → `html.EscapeString`,防止属性逃逸。
-  - 岛的 props 序列化成 JSON 后进 HTML 属性,同样经 `html.EscapeString`。
-  - 见 `runtime/security_test.go`:文本、属性、岛 props、全链路 XSS 载荷都断言被转义。
-- **服务端 / 客户端边界**:`host:*`(Go 能力)只能在服务端组件里 `import`;客户端只能 `import type`。
-  客户端代码碰不到 Go、数据库、密钥。违规是编译错误(见 `compiler/fence_test.go`)。
-- **写操作在 Go**:示例应用(shop)把加购/下单/改库存全部放在 Go 的 `http.HandlerFunc`,
-  方言只读不写。库存、价格、订单一致性由 Go 保证,客户端改不了。
+- **XSS / HTML injection**: the dialect has no `dangerouslySetInnerHTML` and no other way to emit raw HTML.
+  - Text nodes (`{expr}`) go through `gotsx.Text` / `gotsx.Dyn` → `html.EscapeString`.
+  - Element attributes go through `gotsx.A` → `html.EscapeString`, so attribute break-out is impossible.
+  - Island props are serialized to JSON and then HTML-escaped into the attribute.
+  - `jsonLd()` only accepts a JSON string (normally `JSON.stringify(...)`, whose output already escapes `<>&`) and additionally neutralizes `</`.
+  - See `runtime/security_test.go`: text, attributes, island props and full-chain XSS payloads are all asserted escaped.
+- **Server / client boundary**: `host:*` (Go capabilities) can only be imported by server components; client code may only `import type`.
+  Client code cannot reach Go, the database or secrets. Violations are compile errors (`compiler/fence_test.go`).
+- **Writes happen in Go**: the demo apps put every mutation (cart, orders, users) in Go `http.HandlerFunc`s (`Options.Actions`);
+  the dialect reads, it does not write. Stock, prices and order consistency are Go's responsibility; the client cannot alter them.
+- **HTTP layer defaults** (`runtime/server.go`, `runtime/server_test.go`): panic recovery without leaking stacks in production,
+  `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`, a **Content-Security-Policy with a per-response nonce**
+  (only the framework's inline bootstrap script carries it), **CSRF same-origin checks on POST/PUT/PATCH/DELETE actions**
+  (requests without an `Origin`/`Referer` are rejected), request-body limits on telemetry, `no-store` on pages.
+- **Page control flow**: `redirect()` only accepts 3xx status codes (anything else falls back to 302); the URL is passed to
+  `http.Redirect` as-is, so validate user-supplied redirect targets in your host code.
+- **Dev mode**: `-dev` enables the `/_gotsx/dev` live-reload stream and detailed error pages. Never run production with `-dev`.
 
-## 已知需要使用者负责的部分
+## What remains the application's responsibility
 
-- **CSRF**:框架不内置 CSRF 防护。写操作(actions)应自行加同源校验 / token。
-- **认证 / 授权**:框架不提供。会话、权限判定在宿主模块和 action 里自己实现(shop 示例用 sid cookie 演示会话)。
-- **宿主模块的输入校验**:宿主方法的参数来自方言,类型受编译器约束,但业务级校验(长度、范围、注入)由宿主实现负责。
-- **动作(action)反序列化**:action 的 JSON body 由使用者的 handler 解析,自行校验。
+- **Authentication / authorization**: the framework provides the hooks (`Options.Before`, `Options.Middleware`, cookies in
+  `PageProps.Cookies`), not a policy. The `admin` demo shows a session cookie + middleware pattern.
+- **Input validation in host modules**: parameter *types* are enforced by the compiler; business validation (length, range,
+  injection into SQL/shell) belongs to the host implementation.
+- **Action deserialization**: the JSON body of an action is parsed by your handler; validate it.
+- **Open redirects**: `redirect(query.next)` is only as safe as the check you do on `query.next`.
 
-## 报告漏洞
+## Self-review (v0.6) and known gaps
 
-这是 PoC 仓库,尚无正式披露流程。发现问题请开 issue(去掉可利用的细节)或私下联系维护者。
+An independent audit is still pending (it is the last open roadmap item). Until then, this is what has been
+reviewed in-repo, so an auditor knows where to start:
+
+| Area | What was checked | Status |
+|---|---|---|
+| Output escaping | text / attributes / island props / JSON-LD; Suspense fill content is rendered by the same node model (escaped) and inserted via `template.content`, never `innerHTML` of untrusted strings | tested |
+| Inline scripts | the bootstrap script and every Suspense fill script carry the per-response CSP nonce; nothing else is inline | tested |
+| CSRF | same-origin check on unsafe methods for `Options.Actions`; telemetry endpoint same-origin only, body capped at 16 KB | tested |
+| Redirects | `redirect()` only accepts 3xx; the target is application data — validate `query.next`-style inputs in the page | documented |
+| Dev-only surface | `/_gotsx/dev` (SSE) and detailed error pages exist only with `-dev`; production binaries never enable them | tested |
+| Streaming | a boundary that panics is logged and rendered empty in production; a disconnected client drains remaining goroutines; the http.Server write timeout bounds a stuck boundary | tested |
+| LSP | runs locally over stdio; reads only files under the app's `app/` directory plus `.gen/host.d.ts`; never executes app code | reviewed |
+| Regex | patterns are compiled with Go's RE2 engine (linear time, no catastrophic backtracking) and validated at compile time | tested |
+| Dependencies | none outside the Go standard library; `govulncheck ./...` on Go 1.26.4 reports only stdlib advisories that the framework's code paths do not call (GO-2026-6218 `net/url`, GO-2026-6090 `crypto/tls`, GO-2026-6089 `net/http`, GO-2026-5972 `encoding/asn1`) — upgrade the Go toolchain to clear them | checked |
+
+Known gaps: no rate limiting or request-size limits on application actions (add middleware); `Options.SecurityHeaders`
+can weaken the defaults if misused; host modules are trusted Go code.
+
+## Reporting a vulnerability
+
+Please do **not** open a public issue with exploit details. Email the maintainer (see the repository owner's GitHub
+profile) or use GitHub's private vulnerability reporting on the repository. You will get an acknowledgement within a
+week; fixes ship as a patch release with a changelog entry.

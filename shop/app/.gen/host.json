@@ -28,7 +28,9 @@
             "type": "CartView",
             "go": "host.CartView"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 306
         },
         "setQty": {
           "kind": "method",
@@ -54,7 +56,9 @@
           "ret": {
             "type": "CartView",
             "go": "host.CartView"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 344
         },
         "view": {
           "kind": "method",
@@ -68,7 +72,9 @@
           "ret": {
             "type": "CartView",
             "go": "host.CartView"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 299
         }
       }
     },
@@ -87,7 +93,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 125
         },
         "categories": {
           "kind": "method",
@@ -95,7 +103,9 @@
           "ret": {
             "type": "Category[]",
             "go": "[]host.Category"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 123
         },
         "feed": {
           "kind": "method",
@@ -109,7 +119,9 @@
           "ret": {
             "type": "FeedResult",
             "go": "host.FeedResult"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 674
         },
         "flash": {
           "kind": "method",
@@ -117,7 +129,9 @@
           "ret": {
             "type": "Product[]",
             "go": "[]host.Product"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 136
         },
         "flashCards": {
           "kind": "method",
@@ -125,7 +139,9 @@
           "ret": {
             "type": "Card[]",
             "go": "[]host.Card"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 662
         },
         "flashLeftMs": {
           "kind": "method",
@@ -133,7 +149,9 @@
           "ret": {
             "type": "number",
             "go": "int"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 134
         },
         "get": {
           "kind": "method",
@@ -148,7 +166,9 @@
             "type": "Product",
             "go": "host.Product"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 146
         },
         "list": {
           "kind": "method",
@@ -174,7 +194,9 @@
           "ret": {
             "type": "Paged",
             "go": "host.Paged"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 156
         },
         "listCards": {
           "kind": "method",
@@ -200,7 +222,9 @@
           "ret": {
             "type": "PagedCards",
             "go": "host.PagedCards"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 657
         },
         "productReviews": {
           "kind": "method",
@@ -214,7 +238,9 @@
           "ret": {
             "type": "Review[]",
             "go": "[]host.Review"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 213
         },
         "related": {
           "kind": "method",
@@ -228,7 +254,9 @@
           "ret": {
             "type": "Card[]",
             "go": "[]host.Card"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 695
         }
       }
     },
@@ -247,7 +275,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 495
         },
         "fmtSold": {
           "kind": "method",
@@ -261,7 +291,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 504
         }
       }
     },
@@ -285,7 +317,9 @@
             "type": "Order",
             "go": "host.Order"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 422
         },
         "list": {
           "kind": "method",
@@ -299,7 +333,9 @@
           "ret": {
             "type": "Order[]",
             "go": "[]host.Order"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 412
         },
         "place": {
           "kind": "method",
@@ -326,7 +362,9 @@
             "type": "Order",
             "go": "host.Order"
           },
-          "throws": true
+          "throws": true,
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 434
         }
       }
     },
@@ -339,7 +377,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 470
         },
         "name": {
           "kind": "method",
@@ -347,7 +387,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 469
         },
         "sitemapURLs": {
           "kind": "method",
@@ -355,7 +397,9 @@
           "ret": {
             "type": "string[]",
             "go": "[]string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 482
         },
         "url": {
           "kind": "method",
@@ -369,7 +413,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 471
         }
       }
     },
@@ -388,7 +434,9 @@
           "ret": {
             "type": "string[]",
             "go": "[]string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 374
         },
         "toggle": {
           "kind": "method",
@@ -406,7 +454,9 @@
           "ret": {
             "type": "boolean",
             "go": "bool"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
+          "line": 386
         }
       }
     }

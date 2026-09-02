@@ -5,19 +5,39 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 )
 
+// goRegex: JS 正则 + flags → RE2 语法(i/m/s 变成前缀; g 由运行时处理; u 无操作)
+func goRegex(pattern, flags string) string {
+	pre := ""
+	for _, f := range flags {
+		switch f {
+		case 'i', 'm', 's':
+			pre += string(f)
+		}
+	}
+	if pre != "" {
+		return "(?" + pre + ")" + pattern
+	}
+	return pattern
+}
+
 // Checker: 子集的类型检查。目标是给 Go 后端足够的静态类型, 出子集就报带位置的错误。
 type Checker struct {
-	Modules   map[string]*Module
-	Host      *HostInfo
-	Errors    []error
-	global    *Scope
-	mod       *Module
-	scope     *Scope
-	pageProps *ObjT
+	Modules     map[string]*Module
+	Host        *HostInfo
+	Errors      []error
+	global      *Scope
+	mod         *Module
+	scope       *Scope
+	pageProps   *ObjT
+	layoutProps *ObjT  // _layout.server.tsx: PageProps + children
+	errorProps  *ObjT  // _error.server.tsx: PageProps + message
+	HostDTS     string // app/.gen/host.d.ts(编辑器跳转宿主类型用)
 }
 
 type HostInfo struct {
@@ -42,15 +62,16 @@ func NewChecker(hostJSON []byte) (*Checker, error) {
 	c.global = newScope(nil)
 	for _, n := range []string{"useState", "useEffect", "useMemo", "String", "Number", "Boolean", "parseInt", "parseFloat",
 		"encodeURIComponent", "decodeURIComponent", "fetch", "setTimeout", "clearTimeout", "setInterval", "clearInterval",
-		"emit", "on", "alert", "confirm", "isNaN", "jsonLd",
+		"emit", "on", "alert", "confirm", "isNaN", "jsonLd", "redirect", "notFound",
 		"t", "tv", "plural", "fmtNum", "fmtCur", "fmtDate", "lpath"} {
 		c.global.syms[n] = &Symbol{Name: n, Kind: SBuiltin}
 	}
-	for _, n := range []string{"console", "JSON", "Math", "Object"} {
+	for _, n := range []string{"console", "JSON", "Math", "Object", "Date"} {
 		c.global.syms[n] = &Symbol{Name: n, Kind: SBuiltin, Type: &GlobalT{Name: n}}
 	}
+	c.global.syms["isoDate"] = &Symbol{Name: "isoDate", Kind: SBuiltin}
 	// 浏览器对象: 只在客户端代码里可用, 类型 any(链式访问随便写)
-	for _, n := range []string{"document", "window", "location", "history", "navigator", "localStorage", "sessionStorage", "Date", "requestAnimationFrame", "Array"} {
+	for _, n := range []string{"document", "window", "location", "history", "navigator", "localStorage", "sessionStorage", "requestAnimationFrame", "Array"} {
 		c.global.syms[n] = &Symbol{Name: n, Kind: SBuiltin, Type: TAny}
 	}
 	c.pageProps = &ObjT{Name: "PageProps", GoName: "gotsx.PageProps", Fields: []*Field{
@@ -62,6 +83,21 @@ func NewChecker(hostJSON []byte) (*Checker, error) {
 	}}
 	c.global.types["PageProps"] = c.pageProps
 	c.global.types["Node"] = TNode
+	c.layoutProps = &ObjT{Name: "LayoutProps", GoName: "gotsx.LayoutProps", Fields: append(append([]*Field{}, c.pageProps.Fields...),
+		&Field{Name: "children", Go: "Children", Type: TNode})}
+	c.errorProps = &ObjT{Name: "ErrorProps", GoName: "gotsx.ErrorProps", Fields: append(append([]*Field{}, c.pageProps.Fields...),
+		&Field{Name: "message", Go: "Message", Type: TString})}
+	c.global.types["LayoutProps"] = c.layoutProps
+	c.global.types["ErrorProps"] = c.errorProps
+	// <Suspense fallback={…}>…</Suspense>: 流式 SSR 边界(服务端组件专用), Go 侧是 gotsx.Suspense(fallback, thunk)
+	susProps := &ObjT{Name: "SuspenseProps", GoName: "gotsx.SuspenseProps", Fields: []*Field{
+		{Name: "fallback", Go: "Fallback", Type: TNode},
+		{Name: "children", Go: "Children", Type: &OptT{Elem: TNode}, Optional: true},
+	}}
+	sus := &Symbol{Name: "Suspense", Kind: SComp, Go: "gotsx.Suspense"}
+	sus.Comp = &CompT{Name: "Suspense", Props: susProps, Sym: sus}
+	sus.Type = sus.Comp
+	c.global.syms["Suspense"] = sus
 	if err := c.loadHost(hostJSON); err != nil {
 		return nil, err
 	}
@@ -91,6 +127,8 @@ type hostMemberJSON struct {
 	Params []struct{ Type, Go string }
 	Ret    *struct{ Type, Go string }
 	Throws bool
+	File   string `json:"file"`
+	Line   int    `json:"line"`
 }
 
 func (c *Checker) loadHost(data []byte) error {
@@ -118,7 +156,7 @@ func (c *Checker) loadHost(data []byte) error {
 		return c.resolveType(te, Pos{})
 	}
 	mem := func(name string, mj *hostMemberJSON) *HostMember {
-		m := &HostMember{Name: name, Go: mj.Go, Kind: mj.Kind, Throws: mj.Throws}
+		m := &HostMember{Name: name, Go: mj.Go, Kind: mj.Kind, Throws: mj.Throws, File: mj.File, Line: mj.Line}
 		if mj.Kind == "field" {
 			m.Type = parseT(mj.Type)
 			return m
@@ -177,21 +215,26 @@ func (c *Checker) resolveImport(from *Module, spec string, pos Pos) *Module {
 			return m
 		}
 	}
-	c.fatal(pos, "找不到模块 %q", spec)
+	c.fatal(pos, "cannot find module %q", spec)
 	return nil
 }
 
 // CheckAll 按依赖顺序检查全部模块
 func (c *Checker) CheckAll() error {
-	for _, m := range c.Modules {
-		c.checkModule(m)
+	files := make([]string, 0, len(c.Modules))
+	for f := range c.Modules {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	for _, f := range files {
+		c.checkModule(c.Modules[f])
 	}
 	if len(c.Errors) > 0 {
 		var b strings.Builder
 		for _, e := range c.Errors {
 			b.WriteString("  " + e.Error() + "\n")
 		}
-		return fmt.Errorf("类型检查失败:\n%s", b.String())
+		return fmt.Errorf("type check failed:\n%s", b.String())
 	}
 	return nil
 }
@@ -201,7 +244,7 @@ func (c *Checker) checkModule(m *Module) {
 		return
 	}
 	if m.Checking {
-		c.errf(Pos{File: m.File}, "模块循环依赖")
+		c.errf(Pos{File: m.File}, "circular module dependency")
 		return
 	}
 	m.Checking = true
@@ -216,7 +259,7 @@ func (c *Checker) checkModule(m *Module) {
 	}()
 	m.Exports = map[string]*Symbol{}
 	m.Scope = newScope(c.global)
-	m.GoPrefix = sanitizeIdent(m.Name) + "_"
+	m.GoPrefix = goPrefixOf(m)
 	saveMod, saveScope := c.mod, c.scope
 	c.mod, c.scope = m, m.Scope
 	defer func() { c.mod, c.scope = saveMod, saveScope }()
@@ -232,10 +275,10 @@ func (c *Checker) checkModule(m *Module) {
 	for _, s := range m.Stmts {
 		if d, ok := s.(*VarDecl); ok {
 			if d.Pat.Kind != PatIdent {
-				c.fatal(d.Pos, "模块级变量不支持解构")
+				c.fatal(d.Pos, "module-level variables cannot be destructured")
 			}
 			if !d.Const {
-				c.fatal(d.Pos, "模块级只允许 const")
+				c.fatal(d.Pos, "only const is allowed at module level")
 			}
 			c.checkStmt(d)
 			sym := d.Pat.Sym
@@ -261,12 +304,12 @@ func (c *Checker) importInto(m *Module, im *Import) {
 	case im.From == "gotsx":
 		for _, n := range im.Names {
 			switch n.Name {
-			case "useState", "useEffect", "useMemo", "emit", "on":
+			case "useState", "useEffect", "useMemo", "emit", "on", "Suspense":
 				m.Scope.syms[n.Local] = c.global.syms[n.Name]
-			case "Node", "PageProps":
+			case "Node", "PageProps", "LayoutProps", "ErrorProps":
 				m.Scope.types[n.Local] = c.global.types[n.Name]
 			default:
-				c.errf(im.Pos, "gotsx 没有导出 %q", n.Name)
+				c.errf(im.Pos, "module gotsx does not export %q", n.Name)
 			}
 		}
 	case strings.HasPrefix(im.From, "host:"):
@@ -281,13 +324,13 @@ func (c *Checker) importInto(m *Module, im *Import) {
 				}
 			}
 			if !typeOnly {
-				c.fatal(im.Pos, "%q 只能在服务端组件里 import; 客户端代码只能 import type", im.From)
+				c.fatal(im.Pos, "%q can only be imported by server components; client code may only `import type`", im.From)
 			}
 		}
 		name := strings.TrimPrefix(im.From, "host:")
 		hm, ok := c.Host.Modules[name]
 		if !ok {
-			c.fatal(im.Pos, "没有叫 %q 的宿主模块(检查 host.json)", im.From)
+			c.fatal(im.Pos, "no host module named %q (check host.json)", im.From)
 		}
 		for _, n := range im.Names {
 			if t, ok := c.Host.Types[n.Name]; ok && (n.TypeOnly || im.TypeOnly || hm.Members[n.Name] == nil) {
@@ -296,7 +339,7 @@ func (c *Checker) importInto(m *Module, im *Import) {
 			}
 			mem, ok := hm.Members[n.Name]
 			if !ok {
-				c.fatal(im.Pos, "%s 没有导出 %q", im.From, n.Name)
+				c.fatal(im.Pos, "%s does not export %q", im.From, n.Name)
 			}
 			sym := &Symbol{Name: n.Local, Kind: SHostMember, Host: mem, Go: hm.Go + "." + mem.Go}
 			if mem.Kind == "field" {
@@ -309,13 +352,13 @@ func (c *Checker) importInto(m *Module, im *Import) {
 	default:
 		dep := c.resolveImport(m, im.From, im.Pos)
 		if m.Kind == "client" && dep.Kind == "server" {
-			c.fatal(im.Pos, "客户端代码不能 import 服务端组件 %q", im.From)
+			c.fatal(im.Pos, "client code cannot import the server module %q", im.From)
 		}
 		c.checkModule(dep)
 		m.Deps = append(m.Deps, dep)
 		if im.Default != "" {
 			if dep.Default == nil {
-				c.fatal(im.Pos, "%q 没有 default 导出", im.From)
+				c.fatal(im.Pos, "%q has no default export", im.From)
 			}
 			m.Scope.syms[im.Default] = dep.Default
 		}
@@ -326,7 +369,7 @@ func (c *Checker) importInto(m *Module, im *Import) {
 			}
 			sym, ok := dep.Exports[n.Name]
 			if !ok {
-				c.fatal(im.Pos, "%q 没有导出 %q", im.From, n.Name)
+				c.fatal(im.Pos, "%q does not export %q", im.From, n.Name)
 			}
 			m.Scope.syms[n.Local] = sym
 		}
@@ -338,24 +381,41 @@ func isCapitalized(s string) bool { return s != "" && unicode.IsUpper(rune(s[0])
 func (c *Checker) declareTop(s Stmt) {
 	switch d := s.(type) {
 	case *InterfaceDecl:
-		t := &ObjT{Name: d.Name, GoName: d.Name, JSON: c.mod.Kind == "client"}
+		t := &ObjT{Name: d.Name, GoName: d.Name, JSON: c.mod.Kind == "client", Pos: d.Pos}
 		if !d.Export {
 			t.GoName = c.mod.GoPrefix + d.Name
 		}
 		c.mod.Scope.types[d.Name] = t
+		for _, baseName := range d.Extends {
+			bt, ok := c.scope.lookupType(baseName).(*ObjT)
+			if !ok {
+				if ht, isHost := c.Host.Types[baseName]; isHost {
+					bt, ok = ht, true
+				}
+			}
+			if !ok {
+				c.fatal(d.Pos, "interface %s extends %q, which is not a known object type", d.Name, baseName)
+			}
+			for _, f := range bt.Fields {
+				if t.Field(f.Name) == nil {
+					cp := *f
+					t.Fields = append(t.Fields, &cp)
+				}
+			}
+		}
 		c.fillObj(t, d.Fields)
 		d.T = t
 	case *TypeAlias:
 		d.T = c.resolveType(d.Type, d.Pos)
 		c.mod.Scope.types[d.Name] = d.T
 	case *FuncDecl:
-		sym := &Symbol{Name: d.Name, Module: c.mod, Async: d.Async}
+		sym := &Symbol{Name: d.Name, Module: c.mod, Async: d.Async, Pos: d.Pos}
 		d.Sym = sym
 		if isCapitalized(d.Name) && !d.Async {
 			d.Comp = true
 			sym.Kind = SComp
 			sym.Go = d.Name
-			if !d.Export {
+			if !d.Export || underPages(c.mod) { // 页面 / _layout / _404 只被路由表引用: 加前缀, 两个页面都叫 Home 也不冲突
 				sym.Go = c.mod.GoPrefix + d.Name
 			}
 			comp := &CompT{Name: d.Name, Sym: sym, Island: c.mod.Kind == "client"}
@@ -397,7 +457,12 @@ func (c *Checker) fillObj(t *ObjT, fields []*TypeField) {
 		if f.Optional {
 			ft = &OptT{Elem: unopt(ft)}
 		}
-		t.Fields = append(t.Fields, &Field{Name: f.Name, Go: goField(f.Name), Type: ft, Optional: f.Optional})
+		nf := &Field{Name: f.Name, Go: goField(f.Name), Type: ft, Optional: f.Optional}
+		if old := t.Field(f.Name); old != nil { // interface extends: 子接口同名字段覆盖
+			*old = *nf
+			continue
+		}
+		t.Fields = append(t.Fields, nf)
 	}
 }
 
@@ -435,7 +500,7 @@ func (c *Checker) propsType(d *FuncDecl) *ObjT {
 	}
 	p := d.Params[0]
 	if p.Type == nil {
-		c.fatal(p.Pos, "组件 %s 的 props 需要类型标注", d.Name)
+		c.fatal(p.Pos, "component %s needs a type annotation on its props", d.Name)
 	}
 	var t *ObjT
 	switch te := p.Type.(type) {
@@ -450,7 +515,7 @@ func (c *Checker) propsType(d *FuncDecl) *ObjT {
 		rt := c.resolveType(p.Type, p.Pos)
 		ot, ok := rt.(*ObjT)
 		if !ok {
-			c.fatal(p.Pos, "组件 props 必须是对象类型, 现在是 %s", rt)
+			c.fatal(p.Pos, "component props must be an object type, got %s", rt)
 		}
 		t = ot
 	}
@@ -459,7 +524,7 @@ func (c *Checker) propsType(d *FuncDecl) *ObjT {
 		if d.Default {
 			for _, f := range t.Fields {
 				if isNode(f.Type) {
-					c.fatal(p.Pos, "岛的 props 必须可 JSON 序列化, 不能包含 Node(含 children)。岛的内容要么用数据 props 传进来自己渲染, 要么在岛里用共享组件")
+					c.fatal(p.Pos, "island props must be JSON-serializable and cannot contain a Node (including children); pass data props and render inside the island, or use a shared component there")
 				}
 			}
 		}
@@ -484,6 +549,8 @@ func (c *Checker) resolveType(te TypeExpr, pos Pos) Type {
 			return TVoid
 		case "any", "unknown":
 			return TAny
+		case "RegExp":
+			return TRegExp
 		case "undefined", "null":
 			return TUndef
 		case "never":
@@ -511,7 +578,7 @@ func (c *Checker) resolveType(te TypeExpr, pos Pos) Type {
 		if ht, ok := c.Host.Types[t.Name]; ok {
 			return ht
 		}
-		c.fatal(t.Pos, "未知类型 %q", t.Name)
+		c.fatal(t.Pos, "unknown type %q", t.Name)
 	case *TArr:
 		return &ArrT{Elem: c.resolveType(t.Elem, pos)}
 	case *TObj:
@@ -544,13 +611,13 @@ func (c *Checker) resolveType(te TypeExpr, pos Pos) Type {
 		if len(nonNil) == 0 {
 			return TUndef
 		}
-		c.fatal(pos, "子集只支持字面量联合和 T | undefined")
+		c.fatal(pos, "only literal unions and T | undefined are in the subset")
 	case *TStrLit:
 		return TString
 	case *TFunc:
 		return c.fnType(t.Params, t.Ret, false, pos)
 	}
-	c.fatal(pos, "无法解析的类型")
+	c.fatal(pos, "unresolvable type")
 	return nil
 }
 
@@ -602,7 +669,7 @@ func (c *Checker) bindPattern(pat *Pattern, t Type, kind SymKind) {
 	pat.T = t
 	switch pat.Kind {
 	case PatIdent:
-		sym := &Symbol{Name: pat.Name, Kind: kind, Type: t, Go: goIdent(pat.Name), Module: c.mod}
+		sym := &Symbol{Name: pat.Name, Kind: kind, Type: t, Go: goIdent(pat.Name), Module: c.mod, Pos: pat.Pos}
 		pat.Sym = sym
 		c.scope.syms[pat.Name] = sym
 	case PatObject:
@@ -612,7 +679,7 @@ func (c *Checker) bindPattern(pat *Pattern, t Type, kind SymKind) {
 			case *ObjT:
 				f := o.Field(pp.Key)
 				if f == nil {
-					c.fatal(pat.Pos, "类型 %s 没有字段 %q", o, pp.Key)
+					c.fatal(pat.Pos, "type %s has no field %q", o, pp.Key)
 				}
 				ft = f.Type
 			case *MapT:
@@ -668,7 +735,7 @@ func (c *Checker) checkStmt(s Stmt) {
 		if fc != nil {
 			fc.rets = append(fc.rets, t)
 			if fc.component && !isNode(t) && t != TUndef && !isAny(t) {
-				c.errf(d.Pos, "组件必须返回 JSX, 这里返回的是 %s", t)
+				c.errf(d.Pos, "a component must return JSX, this returns %s", t)
 			}
 		}
 	case *IfStmt:
@@ -692,12 +759,70 @@ func (c *Checker) checkStmt(s Stmt) {
 			c.bindPattern(d.Pat, a.Elem, SConst)
 		default:
 			if !isAny(it) {
-				c.fatal(d.Pos, "for-of 只能遍历数组, 这里是 %s", it)
+				c.fatal(d.Pos, "for-of can only iterate arrays, got %s", it)
 			}
 			c.bindPattern(d.Pat, TAny, SConst)
 		}
-		c.checkBlockStmts(d.Body)
+		c.inLoop(func() { c.checkBlockStmts(d.Body) })
 		c.scope = save
+	case *ForStmt:
+		sc := newScope(c.scope)
+		save := c.scope
+		c.scope = sc
+		if d.Init != nil {
+			if vd, ok := d.Init.(*VarDecl); ok && vd.Pat.Kind != PatIdent {
+				c.fatal(vd.Pos, "a for initializer may declare only a single variable")
+			}
+			c.checkStmt(d.Init)
+		}
+		if d.Cond != nil {
+			c.check(d.Cond, nil)
+		}
+		if d.Update != nil {
+			c.check(d.Update, nil)
+		}
+		c.inLoop(func() { c.checkBlockStmts(d.Body) })
+		c.scope = save
+	case *WhileStmt:
+		c.check(d.Cond, nil)
+		c.inLoop(func() { c.checkBlock(d.Body) })
+	case *BreakStmt:
+		fc := c.scope.fnCtx()
+		if fc == nil || (fc.loops == 0 && fc.switches == 0) {
+			c.errf(d.Pos, "break is only allowed inside a loop or switch")
+		}
+	case *ContinueStmt:
+		fc := c.scope.fnCtx()
+		if fc == nil || fc.loops == 0 {
+			c.errf(d.Pos, "continue is only allowed inside a loop")
+		}
+	case *SwitchStmt:
+		dt := c.check(d.Disc, nil)
+		fc := c.scope.fnCtx()
+		if fc != nil {
+			fc.switches++
+		}
+		seenDefault := false
+		for _, cs := range d.Cases {
+			if cs.Test == nil {
+				if seenDefault {
+					c.errf(cs.Pos, "switch may have only one default")
+				}
+				seenDefault = true
+			} else {
+				c.check(cs.Test, unopt(dt))
+			}
+			sc := newScope(c.scope)
+			save := c.scope
+			c.scope = sc
+			for _, st := range cs.Body {
+				c.checkStmt(st)
+			}
+			c.scope = save
+		}
+		if fc != nil {
+			fc.switches--
+		}
 	case *ExprStmt:
 		c.check(d.X, nil)
 	case *Block:
@@ -720,17 +845,29 @@ func (c *Checker) checkStmt(s Stmt) {
 	case *ThrowStmt:
 		c.check(d.X, nil)
 	case *FuncDecl:
-		sym := &Symbol{Name: d.Name, Kind: SFunc, Go: goIdent(d.Name), Module: c.mod, Async: d.Async}
+		sym := &Symbol{Name: d.Name, Kind: SFunc, Go: goIdent(d.Name), Module: c.mod, Async: d.Async, Pos: d.Pos}
 		sym.Type = c.fnType(d.Params, d.Ret, d.Async, d.Pos)
 		d.Sym = sym
 		c.scope.syms[d.Name] = sym
 		c.checkFuncBody(d)
 	case *InterfaceDecl, *TypeAlias:
 		c.declareTop(s)
+		if d, ok := s.(*InterfaceDecl); ok && d.T != nil { // 函数体里声明的 interface 也要生成 Go struct
+			c.mod.AnonTypes = append(c.mod.AnonTypes, d.T)
+		}
 	case *EmptyStmt:
 	default:
-		c.errf(Pos{}, "不支持的语句 %T", s)
+		c.errf(Pos{}, "unsupported statement %T", s)
 	}
+}
+
+func (c *Checker) inLoop(f func()) {
+	fc := c.scope.fnCtx()
+	if fc != nil {
+		fc.loops++
+		defer func() { fc.loops-- }()
+	}
+	f()
 }
 
 func (c *Checker) checkVarDecl(d *VarDecl) {
@@ -752,11 +889,11 @@ func (c *Checker) checkVarDecl(d *VarDecl) {
 					return
 				case "useMemo":
 					if len(call.Args) < 1 {
-						c.fatal(d.Pos, "useMemo 需要一个函数")
+						c.fatal(d.Pos, "useMemo needs a function")
 					}
 					ft, ok := c.check(call.Args[0], &FnT{Ret: nil}).(*FnT)
 					if !ok {
-						c.fatal(d.Pos, "useMemo 的参数必须是函数")
+						c.fatal(d.Pos, "the argument of useMemo must be a function")
 					}
 					call.Kind = "hook:useMemo"
 					call.SetT(ft.Ret)
@@ -775,10 +912,10 @@ func (c *Checker) checkVarDecl(d *VarDecl) {
 		t = declared
 	}
 	if d.Init == nil && declared == nil {
-		c.fatal(d.Pos, "变量 %s 需要初始值或类型标注", d.Pat.Name)
+		c.fatal(d.Pos, "variable %s needs an initializer or a type annotation", d.Pat.Name)
 	}
 	if t == TUndef {
-		c.fatal(d.Pos, "无法推断 %s 的类型(初始值是 undefined), 请标注", d.Pat.Name)
+		c.fatal(d.Pos, "cannot infer the type of %s (the initializer is undefined); add an annotation", d.Pat.Name)
 	}
 	if d.Const && d.Pat.Kind == PatIdent && c.mod.Kind != "server" && c.scope.fn != nil && c.scope.fn.component && c.isReactive(d.Init) {
 		if _, isFn := t.(*FnT); !isFn {
@@ -791,21 +928,21 @@ func (c *Checker) checkVarDecl(d *VarDecl) {
 
 func (c *Checker) checkUseState(d *VarDecl, call *Call) {
 	if d.Pat.Kind != PatArray || len(d.Pat.Elems) != 2 || d.Pat.Elems[0].Kind != PatIdent || d.Pat.Elems[1].Kind != PatIdent {
-		c.fatal(d.Pos, "useState 的写法只支持 const [x, setX] = useState(init)")
+		c.fatal(d.Pos, "useState must be written as const [x, setX] = useState(init)")
 	}
 	var t Type
 	if len(call.TypeArgs) == 1 {
 		t = c.resolveType(call.TypeArgs[0], d.Pos)
 	}
 	if len(call.Args) != 1 {
-		c.fatal(d.Pos, "useState 需要一个初始值")
+		c.fatal(d.Pos, "useState needs an initial value")
 	}
 	it := c.check(call.Args[0], t)
 	if t == nil {
 		t = it
 	}
 	if t == TUndef || isAny(t) {
-		c.fatal(d.Pos, "无法推断 useState 的类型, 请写 useState<T>(...)")
+		c.fatal(d.Pos, "cannot infer the useState type; write useState<T>(...)")
 	}
 	call.Kind = "hook:useState"
 	call.SetT(t)
@@ -843,6 +980,8 @@ func (c *Checker) isReactive(e Expr) bool {
 		}
 		return false
 	case *Unary:
+		return c.isReactive(x.X)
+	case *Update:
 		return c.isReactive(x.X)
 	case *Binary:
 		if x.Op == "&&" || x.Op == "||" || x.Op == "??" {
@@ -920,6 +1059,26 @@ func (c *Checker) isReactiveStmts(ss []Stmt) bool {
 			if c.isReactive(d.Iter) || c.isReactiveStmts(d.Body.Stmts) {
 				return true
 			}
+		case *ForStmt:
+			if d.Init != nil && c.isReactiveStmts([]Stmt{d.Init}) {
+				return true
+			}
+			if c.isReactive(d.Cond) || c.isReactive(d.Update) || c.isReactiveStmts(d.Body.Stmts) {
+				return true
+			}
+		case *WhileStmt:
+			if c.isReactive(d.Cond) || c.isReactiveStmts(d.Body.Stmts) {
+				return true
+			}
+		case *SwitchStmt:
+			if c.isReactive(d.Disc) {
+				return true
+			}
+			for _, cs := range d.Cases {
+				if c.isReactive(cs.Test) || c.isReactiveStmts(cs.Body) {
+					return true
+				}
+			}
 		case *Block:
 			if c.isReactiveStmts(d.Stmts) {
 				return true
@@ -945,11 +1104,11 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 	case *Ident:
 		sym := c.scope.lookup(x.Name)
 		if sym == nil {
-			c.fatal(x.Pos, "未定义的标识符 %q", x.Name)
+			c.fatal(x.Pos, "undefined identifier %q", x.Name)
 		}
 		x.Sym = sym
 		if sym.Kind == SBuiltin && sym.Type == nil {
-			c.fatal(x.Pos, "%s 只能被调用", x.Name)
+			c.fatal(x.Pos, "%s can only be called", x.Name)
 		}
 		if sym.Type == nil {
 			return TAny
@@ -961,6 +1120,16 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 		return TString
 	case *BoolLit:
 		return TBool
+	case *RegexLit:
+		for _, f := range x.Flags {
+			if !strings.ContainsRune("gimsu", f) {
+				c.fatal(x.Pos, "regex flag %q is not supported (use g i m s u)", string(f))
+			}
+		}
+		if _, err := regexp.Compile(goRegex(x.Pattern, x.Flags)); err != nil {
+			c.fatal(x.Pos, "regex is not valid RE2 (lookaround and backreferences are not supported on the server): %v", err)
+		}
+		return TRegExp
 	case *NullLit:
 		return TUndef
 	case *TemplateLit:
@@ -988,7 +1157,7 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 			}
 		}
 		if elem == nil {
-			c.fatal(x.Pos, "无法推断空数组的类型, 请标注(如 useState<string[]>([]))")
+			c.fatal(x.Pos, "cannot infer the type of an empty array; add an annotation (e.g. useState<string[]>([]))")
 		}
 		return &ArrT{Elem: elem}
 	case *ObjectLit:
@@ -1010,7 +1179,7 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 				}
 				f := o.Field(p.Key)
 				if f == nil {
-					c.fatal(x.Pos, "类型 %s 没有字段 %q", o, p.Key)
+					c.fatal(x.Pos, "type %s has no field %q", o, p.Key)
 				}
 				c.check(p.Val, f.Type)
 			}
@@ -1047,10 +1216,27 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 				return TAny
 			}
 		}
-		c.fatal(x.Pos, "不能对 %s 做下标访问", xt)
+		c.fatal(x.Pos, "cannot index into %s", xt)
 	case *Call:
 		return c.checkCall(x, want)
 	case *Unary:
+		if x.Op == "delete" {
+			var recv Expr
+			switch t := x.X.(type) {
+			case *Index:
+				recv = t.X
+			case *Member:
+				recv = t.X
+			}
+			if recv == nil {
+				c.fatal(x.Pos, "delete only works on a Record key: delete m[key] / delete m.key")
+			}
+			c.check(x.X, nil)
+			if _, ok := unopt(recv.T()).(*MapT); !ok {
+				c.fatal(x.Pos, "delete only works on a Record key, got %s", recv.T())
+			}
+			return TBool
+		}
 		c.check(x.X, nil)
 		switch x.Op {
 		case "!":
@@ -1082,9 +1268,21 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 		tt := c.check(x.Target, nil)
 		c.check(x.Val, tt)
 		if id, ok := x.Target.(*Ident); ok && id.Sym != nil && id.Sym.Kind == SConst {
-			c.errf(x.Pos, "不能给 const %s 赋值", id.Name)
+			c.errf(x.Pos, "cannot assign to const %s", id.Name)
+		}
+		if x.Op != "=" && x.Op != "+=" && !isNumber(tt) && !isAny(tt) {
+			c.errf(x.Pos, "%s only works on number, got %s", x.Op, tt)
 		}
 		return tt
+	case *Update:
+		tt := c.check(x.X, nil)
+		if !isNumber(tt) && !isAny(tt) {
+			c.errf(x.Pos, "%s only works on number, got %s", x.Op, tt)
+		}
+		if id, ok := x.X.(*Ident); ok && id.Sym != nil && id.Sym.Kind == SConst {
+			c.errf(x.Pos, "const %s cannot be modified with %s", id.Name, x.Op)
+		}
+		return TNumber
 	case *AsExpr:
 		c.check(x.X, nil)
 		return c.resolveType(x.Type, x.Pos)
@@ -1112,15 +1310,18 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 		}
 		return c.check(x.X, nil)
 	}
-	c.fatal(e.GetPos(), "不支持的表达式 %T", e)
+	c.fatal(e.GetPos(), "unsupported expression %T", e)
 	return nil
 }
 
 var arrayMethods = map[string]bool{"map": true, "filter": true, "find": true, "some": true, "every": true, "includes": true,
 	"indexOf": true, "join": true, "slice": true, "concat": true, "forEach": true, "length": true,
-	"sort": true, "reduce": true, "reverse": true, "flat": true, "at": true}
+	"sort": true, "reduce": true, "reverse": true, "flat": true, "at": true,
+	"push": true, "pop": true, "shift": true, "unshift": true, "splice": true, "findIndex": true, "lastIndexOf": true}
 var stringMethods = map[string]bool{"toUpperCase": true, "toLowerCase": true, "trim": true, "includes": true, "startsWith": true, "padStart": true, "padEnd": true,
-	"endsWith": true, "split": true, "slice": true, "replace": true, "replaceAll": true, "repeat": true, "indexOf": true, "charAt": true, "length": true}
+	"endsWith": true, "split": true, "slice": true, "replace": true, "replaceAll": true, "repeat": true, "indexOf": true, "charAt": true, "length": true,
+	"trimStart": true, "trimEnd": true, "lastIndexOf": true, "localeCompare": true, "toString": true, "at": true, "match": true, "search": true}
+var numberMethods = map[string]bool{"toFixed": true, "toString": true}
 
 func (c *Checker) checkMember(x *Member) Type {
 	rt := c.check(x.X, nil)
@@ -1133,7 +1334,7 @@ func (c *Checker) checkMember(x *Member) Type {
 	switch t := rt.(type) {
 	case *ArrT:
 		if !arrayMethods[x.Name] {
-			c.fatal(x.Pos, "子集不支持数组方法 %q", x.Name)
+			c.fatal(x.Pos, "array method %q is not in the subset", x.Name)
 		}
 		x.Builtin = x.Name
 		if x.Name == "length" {
@@ -1145,7 +1346,7 @@ func (c *Checker) checkMember(x *Member) Type {
 		switch t {
 		case TString:
 			if !stringMethods[x.Name] {
-				c.fatal(x.Pos, "子集不支持字符串方法 %q", x.Name)
+				c.fatal(x.Pos, "string method %q is not in the subset", x.Name)
 			}
 			x.Builtin = x.Name
 			if x.Name == "length" {
@@ -1154,15 +1355,21 @@ func (c *Checker) checkMember(x *Member) Type {
 				res = &BuiltinT{Recv: t, Name: x.Name}
 			}
 		case TNumber:
-			if x.Name != "toFixed" {
-				c.fatal(x.Pos, "子集不支持数字方法 %q", x.Name)
+			if !numberMethods[x.Name] {
+				c.fatal(x.Pos, "number method %q is not in the subset", x.Name)
+			}
+			x.Builtin = x.Name
+			res = &BuiltinT{Recv: t, Name: x.Name}
+		case TRegExp:
+			if x.Name != "test" {
+				c.fatal(x.Pos, "RegExp only supports .test(s) (use s.match / s.replace / s.split / s.search for the rest)")
 			}
 			x.Builtin = x.Name
 			res = &BuiltinT{Recv: t, Name: x.Name}
 		case TAny:
 			res = TAny
 		default:
-			c.fatal(x.Pos, "%s 上没有属性 %q", t, x.Name)
+			c.fatal(x.Pos, "%s has no property %q", t, x.Name)
 		}
 	case *ObjT:
 		if f := t.Field(x.Name); f != nil {
@@ -1172,7 +1379,7 @@ func (c *Checker) checkMember(x *Member) Type {
 			x.GoName = m.Go
 			res = &HostFnT{M: m}
 		} else {
-			c.fatal(x.Pos, "类型 %s 没有字段 %q", t, x.Name)
+			c.fatal(x.Pos, "type %s has no field %q", t, x.Name)
 		}
 	case *MapT:
 		x.MapKey = true
@@ -1180,7 +1387,7 @@ func (c *Checker) checkMember(x *Member) Type {
 	case *HostModT:
 		m, ok := t.Members[x.Name]
 		if !ok {
-			c.fatal(x.Pos, "%s 没有成员 %q", t, x.Name)
+			c.fatal(x.Pos, "%s has no member %q", t, x.Name)
 		}
 		x.GoName = m.Go
 		if m.Kind == "field" {
@@ -1191,7 +1398,7 @@ func (c *Checker) checkMember(x *Member) Type {
 	case *GlobalT:
 		res = &BuiltinT{Recv: t, Name: x.Name}
 	default:
-		c.fatal(x.Pos, "不能在 %s 上取属性 %q", rt, x.Name)
+		c.fatal(x.Pos, "%s has no accessible property %q", rt, x.Name)
 	}
 	if opt && x.Optional {
 		if _, isOpt := res.(*OptT); !isOpt {
@@ -1213,7 +1420,7 @@ func (c *Checker) checkArgs(x *Call, params []*FnParam) {
 		for _, p := range params[len(x.Args):] {
 			if !p.Optional {
 				if _, isOpt := p.Type.(*OptT); !isOpt {
-					c.fatal(x.Pos, "缺少参数 %s", p.Name)
+					c.fatal(x.Pos, "missing argument %s", p.Name)
 				}
 			}
 		}
@@ -1228,12 +1435,12 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 			x.Kind = "global:" + sym.Name
 			switch sym.Name {
 			case "useState":
-				c.fatal(x.Pos, "useState 只能写成 const [x, setX] = useState(init)")
+				c.fatal(x.Pos, "useState can only be written as const [x, setX] = useState(init)")
 			case "useMemo":
-				c.fatal(x.Pos, "useMemo 只能写成 const x = useMemo(() => ...)")
+				c.fatal(x.Pos, "useMemo can only be written as const x = useMemo(() => ...)")
 			case "useEffect":
 				if len(x.Args) < 1 {
-					c.fatal(x.Pos, "useEffect 需要一个函数")
+					c.fatal(x.Pos, "useEffect needs a function")
 				}
 				c.check(x.Args[0], &FnT{Ret: TVoid})
 				once := false
@@ -1268,27 +1475,53 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 				return TBool
 			case "jsonLd":
 				if len(x.Args) != 1 {
-					c.fatal(x.Pos, "jsonLd 需要一个 JSON 字符串(通常是 JSON.stringify(...))")
+					c.fatal(x.Pos, "jsonLd needs one JSON string (usually JSON.stringify(...))")
 				}
 				c.check(x.Args[0], TString)
 				return TNode
+			case "redirect":
+				if c.mod.Kind != "server" {
+					c.fatal(x.Pos, "redirect() can only be used in server components (*.server.tsx)")
+				}
+				if len(x.Args) < 1 || len(x.Args) > 2 {
+					c.fatal(x.Pos, "redirect(url, status?) takes 1 or 2 arguments")
+				}
+				c.check(x.Args[0], TString)
+				if len(x.Args) == 2 {
+					c.check(x.Args[1], TNumber)
+				}
+				return TNode
+			case "notFound":
+				if c.mod.Kind != "server" {
+					c.fatal(x.Pos, "notFound() can only be used in server components (*.server.tsx)")
+				}
+				if len(x.Args) != 0 {
+					c.fatal(x.Pos, "notFound() takes no arguments")
+				}
+				return TNode
 			case "t", "fmtDate":
 				if len(x.Args) != 2 {
-					c.fatal(x.Pos, "%s(locale, key) 需要两个参数", sym.Name)
+					c.fatal(x.Pos, "%s(locale, key) takes two arguments", sym.Name)
 				}
 				c.check(x.Args[0], TString)
 				c.check(x.Args[1], TString)
 				return TString
+			case "isoDate":
+				if len(x.Args) != 1 {
+					c.fatal(x.Pos, "isoDate(ms) takes one argument")
+				}
+				c.check(x.Args[0], TNumber)
+				return TString
 			case "lpath":
 				if len(x.Args) != 2 {
-					c.fatal(x.Pos, "lpath(locale, path) 需要两个参数")
+					c.fatal(x.Pos, "lpath(locale, path) takes two arguments")
 				}
 				c.check(x.Args[0], TString)
 				c.check(x.Args[1], TString)
 				return TString
 			case "tv":
 				if len(x.Args) != 3 {
-					c.fatal(x.Pos, "tv(locale, key, vars) 需要三个参数(vars 是 Record<string,string>)")
+					c.fatal(x.Pos, "tv(locale, key, vars) takes three arguments (vars is a Record<string,string>)")
 				}
 				c.check(x.Args[0], TString)
 				c.check(x.Args[1], TString)
@@ -1296,7 +1529,7 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 				return TString
 			case "plural":
 				if len(x.Args) != 3 {
-					c.fatal(x.Pos, "plural(locale, key, n) 需要三个参数")
+					c.fatal(x.Pos, "plural(locale, key, n) takes three arguments")
 				}
 				c.check(x.Args[0], TString)
 				c.check(x.Args[1], TString)
@@ -1304,7 +1537,7 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 				return TString
 			case "fmtNum", "fmtCur":
 				if len(x.Args) != 2 {
-					c.fatal(x.Pos, "%s(locale, n) 需要两个参数", sym.Name)
+					c.fatal(x.Pos, "%s(locale, n) takes two arguments", sym.Name)
 				}
 				c.check(x.Args[0], TString)
 				c.check(x.Args[1], TNumber)
@@ -1323,7 +1556,7 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 	}
 	switch t := ft.(type) {
 	case *BuiltinT:
-		return c.checkBuiltinCall(x, t)
+		return c.checkBuiltinCall(x, t, want)
 	case *HostFnT:
 		x.Kind = "host"
 		x.Host = t.M
@@ -1349,7 +1582,7 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 	case *SetterT:
 		x.Kind = "setter"
 		if len(x.Args) != 1 {
-			c.fatal(x.Pos, "setter 需要一个参数")
+			c.fatal(x.Pos, "a setter takes one argument")
 		}
 		if a, ok := x.Args[0].(*Arrow); ok {
 			c.check(a, &FnT{Params: []*FnParam{{Name: "prev", Type: t.Elem}}, Ret: t.Elem})
@@ -1358,7 +1591,7 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 		}
 		return TVoid
 	case *CompT:
-		c.fatal(x.Pos, "组件 %s 请用 JSX 写法 <%s />", t.Name, t.Name)
+		c.fatal(x.Pos, "component %s must be used as JSX: <%s />", t.Name, t.Name)
 	case *Prim:
 		if t == TAny {
 			x.Kind = "any"
@@ -1368,15 +1601,15 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 			return TAny
 		}
 	}
-	c.fatal(x.Pos, "%s 不是函数", ft)
+	c.fatal(x.Pos, "%s is not a function", ft)
 	return nil
 }
 
-func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
+func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT, want Type) Type {
 	x.Kind = "builtin:" + b.Name
 	args := func(n int) {
 		if len(x.Args) < n {
-			c.fatal(x.Pos, "%s 需要 %d 个参数", b.Name, n)
+			c.fatal(x.Pos, "%s needs %d argument(s)", b.Name, n)
 		}
 		for _, a := range x.Args {
 			c.check(a, nil)
@@ -1390,20 +1623,24 @@ func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
 		switch b.Name {
 		case "map":
 			if len(x.Args) != 1 {
-				c.fatal(x.Pos, "map 需要一个回调")
+				c.fatal(x.Pos, "map needs a callback")
 			}
-			ft, ok := c.check(x.Args[0], cb(nil)).(*FnT)
+			var wantElem Type // useState<Item[]>(xs.map(...)) / const ys: Item[] = xs.map(...): 期望类型传进回调, 对象字面量就能对上
+			if wa, ok := unopt(want).(*ArrT); ok && want != nil {
+				wantElem = wa.Elem
+			}
+			ft, ok := c.check(x.Args[0], cb(wantElem)).(*FnT)
 			if !ok {
-				c.fatal(x.Pos, "map 的参数必须是函数")
+				c.fatal(x.Pos, "the argument of map must be a function")
 			}
 			if ft.Ret == nil {
-				c.fatal(x.Pos, "无法推断 map 回调的返回类型")
+				c.fatal(x.Pos, "cannot infer the return type of the map callback")
 			}
 			x.Reactive = c.mod.Kind != "server" && c.isReactive(x)
 			return &ArrT{Elem: ft.Ret}
-		case "filter", "find", "some", "every", "forEach":
+		case "filter", "find", "some", "every", "forEach", "findIndex":
 			if len(x.Args) != 1 {
-				c.fatal(x.Pos, "%s 需要一个回调", b.Name)
+				c.fatal(x.Pos, "%s needs a callback", b.Name)
 			}
 			ret := TBool
 			if b.Name == "forEach" {
@@ -1417,14 +1654,44 @@ func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
 				return &OptT{Elem: r.Elem}
 			case "forEach":
 				return TVoid
+			case "findIndex":
+				return TNumber
 			}
 			return TBool
 		case "includes":
 			args(1)
 			return TBool
-		case "indexOf":
+		case "indexOf", "lastIndexOf":
 			args(1)
 			return TNumber
+		case "push", "unshift":
+			if len(x.Args) < 1 {
+				c.fatal(x.Pos, "%s needs at least one element", b.Name)
+			}
+			c.requireMutable(x.Pos, m0(x), b.Name)
+			for _, a := range x.Args {
+				c.check(a, r.Elem)
+			}
+			return TNumber
+		case "pop", "shift":
+			args(0)
+			c.requireMutable(x.Pos, m0(x), b.Name)
+			return &OptT{Elem: r.Elem}
+		case "splice":
+			if len(x.Args) < 1 {
+				c.fatal(x.Pos, "splice takes (start, deleteCount?, ...items)")
+			}
+			c.requireMutable(x.Pos, m0(x), b.Name)
+			c.check(x.Args[0], TNumber)
+			if len(x.Args) > 1 {
+				c.check(x.Args[1], TNumber)
+			}
+			if len(x.Args) > 2 {
+				for _, a := range x.Args[2:] {
+					c.check(a, r.Elem)
+				}
+			}
+			return &ArrT{Elem: r.Elem}
 		case "join":
 			args(0)
 			return TString
@@ -1439,7 +1706,7 @@ func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
 			return r.Elem
 		case "sort":
 			if len(x.Args) < 1 {
-				c.fatal(x.Pos, "sort 需要一个比较函数 (a, b) => number")
+				c.fatal(x.Pos, "sort needs a comparator (a, b) => number")
 			}
 			c.check(x.Args[0], &FnT{Params: []*FnParam{{Name: "a", Type: r.Elem}, {Name: "b", Type: r.Elem}}, Ret: TNumber})
 			return &ArrT{Elem: r.Elem}
@@ -1451,15 +1718,43 @@ func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
 			return &ArrT{Elem: r.Elem}
 		case "reduce":
 			if len(x.Args) != 2 {
-				c.fatal(x.Pos, "reduce 需要 (回调, 初始值) 两个参数")
+				c.fatal(x.Pos, "reduce takes (callback, initialValue)")
 			}
 			accT := c.check(x.Args[1], nil)
 			c.check(x.Args[0], &FnT{Params: []*FnParam{{Name: "acc", Type: accT}, {Name: "x", Type: r.Elem}, {Name: "i", Type: TNumber, Optional: true}}, Ret: accT})
 			return accT
 		}
 	case *Prim:
+		if r == TRegExp { // re.test(s)
+			args(1)
+			c.check(x.Args[0], TString)
+			return TBool
+		}
+		if r == TString && len(x.Args) > 0 {
+			switch b.Name {
+			case "replace", "replaceAll", "split", "match", "search":
+				if c.check(x.Args[0], nil) == TRegExp {
+					x.Kind = "builtin:re_" + b.Name
+					if b.Name == "replaceAll" && !strings.Contains(x.Args[0].(*RegexLit).Flags, "g") {
+						c.fatal(x.Pos, "replaceAll with a regex requires the g flag")
+					}
+					for _, a := range x.Args[1:] {
+						c.check(a, TString)
+					}
+					switch b.Name {
+					case "match", "split":
+						return &ArrT{Elem: TString}
+					case "search":
+						return TNumber
+					}
+					return TString
+				}
+			}
+		}
 		switch b.Name {
-		case "toUpperCase", "toLowerCase", "trim", "slice", "replace", "replaceAll", "repeat", "charAt", "toFixed":
+		case "match", "search":
+			c.fatal(x.Pos, "%s takes a regex literal", b.Name)
+		case "toUpperCase", "toLowerCase", "trim", "trimStart", "trimEnd", "slice", "replace", "replaceAll", "repeat", "charAt", "toFixed", "toString", "at":
 			args(0)
 			return TString
 		case "includes", "startsWith", "endsWith":
@@ -1468,7 +1763,7 @@ func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
 		case "split":
 			args(1)
 			return &ArrT{Elem: TString}
-		case "indexOf":
+		case "indexOf", "lastIndexOf", "localeCompare":
 			args(1)
 			return TNumber
 		case "padStart", "padEnd":
@@ -1492,9 +1787,29 @@ func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
 				return TNumber
 			}
 			return TNumber
+		case "Date":
+			switch b.Name {
+			case "now":
+				args(0)
+				return TNumber
+			case "parse":
+				args(1)
+				return TNumber
+			}
+			c.fatal(x.Pos, "only Date.now() / Date.parse(iso) are in the subset (format with fmtDate / isoDate)")
 		case "Object":
+			if b.Name == "hasOwn" {
+				if len(x.Args) != 2 {
+					c.fatal(x.Pos, "Object.hasOwn(record, key) takes two arguments")
+				}
+				if _, ok := unopt(c.check(x.Args[0], nil)).(*MapT); !ok {
+					c.fatal(x.Pos, "Object.hasOwn: the first argument must be a Record")
+				}
+				c.check(x.Args[1], TString)
+				return TBool
+			}
 			if len(x.Args) != 1 {
-				c.fatal(x.Pos, "Object.%s 需要一个参数", b.Name)
+				c.fatal(x.Pos, "Object.%s takes one argument", b.Name)
 			}
 			at := unopt(c.check(x.Args[0], nil))
 			switch b.Name {
@@ -1506,13 +1821,41 @@ func (c *Checker) checkBuiltinCall(x *Call, b *BuiltinT) Type {
 				}
 				return &ArrT{Elem: TAny}
 			}
-			c.fatal(x.Pos, "子集只支持 Object.keys / Object.values")
+			c.fatal(x.Pos, "only Object.keys / Object.values / Object.hasOwn are in the subset")
 		}
 		args(0)
 		return TAny
 	}
-	c.fatal(x.Pos, "子集不支持 %s", b)
+	c.fatal(x.Pos, "%s is not in the subset", b)
 	return nil
+}
+
+func m0(x *Call) Expr {
+	if m, ok := x.Fn.(*Member); ok {
+		return m.X
+	}
+	return nil
+}
+
+// requireMutable: push/pop/splice 这类原地修改需要一个可寻址的数组(变量 / 字段 / 下标), 不能是临时值
+func (c *Checker) requireMutable(pos Pos, recv Expr, method string) {
+	for {
+		p, ok := recv.(*Paren)
+		if !ok {
+			break
+		}
+		recv = p.X
+	}
+	switch r := recv.(type) {
+	case *Ident:
+		if r.Sym != nil && (r.Sym.Kind == SSignal || r.Sym.Kind == SMemo) {
+			c.errf(pos, "%s cannot mutate state %s; use the immutable form set%s([...%s, x])", method, r.Name, strings.ToUpper(r.Name[:1])+r.Name[1:], r.Name)
+		}
+		return
+	case *Member, *Index:
+		return
+	}
+	c.errf(pos, "%s must be called on a variable / field / index (it mutates an addressable array in place)", method)
 }
 
 func (c *Checker) checkBinary(x *Binary, want Type) Type {
@@ -1545,7 +1888,7 @@ func (c *Checker) checkBinary(x *Binary, want Type) Type {
 	case "-", "*", "/", "%":
 		return TNumber
 	case "==", "!=":
-		c.errf(x.Pos, "子集只允许 === / !==")
+		c.errf(x.Pos, "only === / !== are allowed (== and != are not in the subset)")
 		return TBool
 	default:
 		return TBool
@@ -1572,7 +1915,7 @@ func (c *Checker) checkArrow(x *Arrow, want Type) Type {
 		} else if wf != nil && i < len(wf.Params) {
 			pt = wf.Params[i].Type
 		} else {
-			c.fatal(p.Pos, "无法推断参数 %s 的类型, 请标注", p.Pat.Name)
+			c.fatal(p.Pos, "cannot infer the type of parameter %s; add an annotation", p.Pat.Name)
 		}
 		p.T = pt
 		name := p.Pat.Name
@@ -1621,14 +1964,14 @@ func (c *Checker) checkChild(k Expr) {
 		switch tt := unopt(t).(type) {
 		case *Prim:
 			if tt == TVoid {
-				c.fatal(x.Pos, "JSX 子节点不能是 void")
+				c.fatal(x.Pos, "a JSX child cannot be void")
 			}
 		case *ArrT:
 			if !isNode(tt.Elem) && !isString(tt.Elem) && !isNumber(tt.Elem) && !isAny(tt.Elem) {
-				c.fatal(x.Pos, "JSX 子节点数组的元素必须是节点或文本, 这里是 %s", tt.Elem)
+				c.fatal(x.Pos, "elements of a JSX child array must be nodes or text, got %s", tt.Elem)
 			}
 		case *ObjT, *FnT, *MapT:
-			c.fatal(x.Pos, "JSX 子节点不能是 %s", t)
+			c.fatal(x.Pos, "a JSX child cannot be %s", t)
 		}
 	default:
 		c.check(k, TNode)
@@ -1641,14 +1984,17 @@ func (c *Checker) checkJSX(x *JSXElem) Type {
 	if isCapitalized(x.Tag) {
 		sym := c.scope.lookup(x.Tag)
 		if sym == nil || sym.Kind != SComp {
-			c.fatal(x.Pos, "%q 不是组件", x.Tag)
+			c.fatal(x.Pos, "%q is not a component", x.Tag)
 		}
 		x.Comp = sym
+		if sym.Go == "gotsx.Suspense" && c.mod.Kind != "server" {
+			c.fatal(x.Pos, "Suspense is only available in server components (*.server.tsx)")
+		}
 		props := sym.Comp.Props
 		seen := map[string]bool{}
 		for _, a := range x.Attrs {
 			if a.Spread != nil {
-				c.fatal(x.Pos, "子集不支持 JSX 属性展开")
+				c.fatal(x.Pos, "JSX attribute spread is not in the subset")
 			}
 			if a.Name == "key" {
 				if a.Val != nil {
@@ -1658,12 +2004,12 @@ func (c *Checker) checkJSX(x *JSXElem) Type {
 			}
 			f := props.Field(a.Name)
 			if f == nil {
-				c.fatal(x.Pos, "组件 %s 没有 prop %q", x.Tag, a.Name)
+				c.fatal(x.Pos, "component %s has no prop %q", x.Tag, a.Name)
 			}
 			seen[a.Name] = true
 			if a.Val == nil {
 				if !isBool(f.Type) {
-					c.fatal(x.Pos, "prop %s 需要值", a.Name)
+					c.fatal(x.Pos, "prop %s needs a value", a.Name)
 				}
 				continue
 			}
@@ -1673,12 +2019,12 @@ func (c *Checker) checkJSX(x *JSXElem) Type {
 		for _, f := range props.Fields {
 			if !seen[f.Name] && !f.Optional && f.Name != "children" {
 				if _, isOpt := f.Type.(*OptT); !isOpt {
-					c.fatal(x.Pos, "组件 %s 缺少 prop %q", x.Tag, f.Name)
+					c.fatal(x.Pos, "component %s is missing prop %q", x.Tag, f.Name)
 				}
 			}
 		}
 		if len(x.Children) > 0 && props.Field("children") == nil {
-			c.fatal(x.Pos, "组件 %s 不接受 children", x.Tag)
+			c.fatal(x.Pos, "component %s does not accept children", x.Tag)
 		}
 		for _, k := range x.Children {
 			c.checkChild(k)
@@ -1687,7 +2033,7 @@ func (c *Checker) checkJSX(x *JSXElem) Type {
 	}
 	for _, a := range x.Attrs {
 		if a.Spread != nil {
-			c.fatal(x.Pos, "子集不支持 JSX 属性展开")
+			c.fatal(x.Pos, "JSX attribute spread is not in the subset")
 		}
 		if n, ok := attrNameMap[a.Name]; ok {
 			a.Name = n
@@ -1749,6 +2095,23 @@ func goField(name string) string {
 func ReadHostJSON(appDir string) []byte {
 	b, _ := os.ReadFile(filepath.Join(appDir, ".gen", "host.json"))
 	return b
+}
+
+// goPrefixOf: 模块内非导出符号的 Go 名前缀。用 app/ 下的相对路径(pages_docs__layout_), 同名文件不同目录不冲突
+func goPrefixOf(m *Module) string {
+	name := m.Name
+	if i := strings.LastIndex(filepath.ToSlash(m.File), "/app/"); i >= 0 {
+		rel := filepath.ToSlash(m.File)[i+5:]
+		for _, suf := range []string{".tsx", ".server", ".client"} {
+			rel = strings.TrimSuffix(rel, suf)
+		}
+		name = rel
+	}
+	return sanitizeIdent(name) + "_"
+}
+
+func underPages(m *Module) bool {
+	return strings.Contains(filepath.ToSlash(m.File), "/app/pages/")
 }
 
 func sanitizeIdent(s string) string {

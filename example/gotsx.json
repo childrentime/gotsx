@@ -1,4 +1,4 @@
 {
-  "module": "gotsx/example",
-  "hostPackage": "gotsx/example/host"
+  "module": "github.com/childrentime/gotsx/example",
+  "hostPackage": "github.com/childrentime/gotsx/example/host"
 }

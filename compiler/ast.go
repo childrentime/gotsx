@@ -93,6 +93,32 @@ type ForOfStmt struct {
 	Iter Expr
 	Body *Block
 }
+
+// ForStmt: 经典三段式 for (init; cond; update)
+type ForStmt struct {
+	Pos    Pos
+	Init   Stmt // *VarDecl / *ExprStmt / nil
+	Cond   Expr // nil = true
+	Update Expr // nil
+	Body   *Block
+}
+type WhileStmt struct {
+	Pos  Pos
+	Cond Expr
+	Body *Block
+}
+type BreakStmt struct{ Pos Pos }
+type ContinueStmt struct{ Pos Pos }
+type SwitchStmt struct {
+	Pos   Pos
+	Disc  Expr
+	Cases []*SwitchCase
+}
+type SwitchCase struct {
+	Pos  Pos
+	Test Expr // nil = default
+	Body []Stmt
+}
 type ExprStmt struct {
 	Pos Pos
 	X   Expr
@@ -102,11 +128,12 @@ type Block struct {
 	Stmts []Stmt
 }
 type InterfaceDecl struct {
-	Pos    Pos
-	Name   string
-	Fields []*TypeField
-	Export bool
-	T      *ObjT
+	Pos     Pos
+	Name    string
+	Extends []string
+	Fields  []*TypeField
+	Export  bool
+	T       *ObjT
 }
 type TypeAlias struct {
 	Pos    Pos
@@ -137,6 +164,11 @@ func (*VarDecl) stmtNode()       {}
 func (*ReturnStmt) stmtNode()    {}
 func (*IfStmt) stmtNode()        {}
 func (*ForOfStmt) stmtNode()     {}
+func (*ForStmt) stmtNode()       {}
+func (*WhileStmt) stmtNode()     {}
+func (*BreakStmt) stmtNode()     {}
+func (*ContinueStmt) stmtNode()  {}
+func (*SwitchStmt) stmtNode()    {}
 func (*ExprStmt) stmtNode()      {}
 func (*Block) stmtNode()         {}
 func (*InterfaceDecl) stmtNode() {}
@@ -205,6 +237,11 @@ type StrLit struct {
 type BoolLit struct {
 	base
 	Val bool
+}
+type RegexLit struct {
+	base
+	Pattern string
+	Flags   string
 }
 type NullLit struct{ base } // null / undefined
 type TemplateLit struct {
@@ -282,6 +319,14 @@ type Assign struct {
 	Op          string
 	Target, Val Expr
 }
+
+// Update: x++ / x-- / ++x / --x
+type Update struct {
+	base
+	Op     string // "++" | "--"
+	X      Expr
+	Prefix bool
+}
 type AsExpr struct {
 	base
 	X    Expr
@@ -316,6 +361,7 @@ type JSXAttr struct {
 	Spread   Expr
 	Reactive bool
 }
+
 type JSXFrag struct {
 	base
 	Children []Expr

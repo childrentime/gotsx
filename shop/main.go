@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"strings"
 
-	gotsx "gotsx/runtime"
-	"gotsx/shop/gen"
-	"gotsx/shop/host"
+	gotsx "github.com/childrentime/gotsx/runtime"
+	"github.com/childrentime/gotsx/shop/gen"
+	"github.com/childrentime/gotsx/shop/host"
 )
 
 func sidOf(w http.ResponseWriter, r *http.Request) string {
@@ -130,12 +130,12 @@ func main() {
 		Actions: map[string]http.HandlerFunc{
 			"GET /manifest.webmanifest": func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/manifest+json")
-				w.Write([]byte(`{"name":"gomu 好物商城","short_name":"gomu","start_url":"/","scope":"/","display":"standalone","background_color":"#ffffff","theme_color":"#f9491f","description":"全球好物, 工厂直发","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}`))
+				w.Write([]byte(`{"name":"gomu 好物商城","short_name":"gomu","start_url":"/","scope":"/","display":"standalone","background_color":"#ffffff","theme_color":"#18181b","description":"全球好物, 工厂直发","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}`))
 			},
 			"GET /icon.svg": func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "image/svg+xml")
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-				w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#f9491f"/><text x="256" y="300" font-size="300" font-weight="900" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif">g</text></svg>`))
+				w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#18181b"/><text x="256" y="300" font-size="300" font-weight="900" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif">g</text></svg>`))
 			},
 			"GET /img/p/{id}": func(w http.ResponseWriter, r *http.Request) {
 				p, err := host.Catalog.Get(r.PathValue("id"))
@@ -151,14 +151,12 @@ func main() {
 				}
 				w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-				h1, h2 := p.Hue, (p.Hue+40)%360
 				svg := fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400" role="img" aria-label="%s">`+
-					`<defs><radialGradient id="g" cx="50%%" cy="18%%" r="90%%"><stop offset="0%%" stop-color="#ffffff"/><stop offset="60%%" stop-color="hsl(%d 46%% 95%%)"/><stop offset="100%%" stop-color="hsl(%d 42%% 90%%)"/></radialGradient>`+
-					`<filter id="s" x="-30%%" y="-30%%" width="160%%" height="160%%"><feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#1c1815" flood-opacity="0.22"/></filter></defs>`+
-					`<rect width="400" height="400" fill="url(#g)"/>`+
-					`<ellipse cx="200" cy="320" rx="110" ry="20" fill="#1c1815" opacity="0.14"/>`+
-					`<text x="200" y="215" font-size="190" text-anchor="middle" dominant-baseline="central" filter="url(#s)">%s</text>`+
-					`</svg>`, htmlAttr(p.Title), h1, h2, glyph)
+					`<defs><filter id="s" x="-30%%" y="-30%%" width="160%%" height="160%%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#09090b" flood-opacity="0.14"/></filter></defs>`+
+					`<rect width="400" height="400" fill="#f4f4f5"/>`+
+					`<ellipse cx="200" cy="318" rx="104" ry="14" fill="#09090b" opacity="0.06"/>`+
+					`<text x="200" y="212" font-size="180" text-anchor="middle" dominant-baseline="central" filter="url(#s)">%s</text>`+
+					`</svg>`, htmlAttr(p.Title), glyph)
 				w.Write([]byte(svg))
 			},
 			"GET /robots.txt": func(w http.ResponseWriter, r *http.Request) {

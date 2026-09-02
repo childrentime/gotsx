@@ -20,6 +20,7 @@ var (
 	TUndef  = &Prim{"undefined"}
 	TAny    = &Prim{"any"}
 	TNode   = &Prim{"Node"}
+	TRegExp = &Prim{"RegExp"}
 )
 
 type ArrT struct{ Elem Type }
@@ -46,6 +47,7 @@ type ObjT struct {
 	Host    bool
 	Anon    bool
 	JSON    bool // 生成 json tag(岛 props)
+	Pos     Pos  // interface 声明位置(宿主类型为空)
 }
 
 func (t *ObjT) String() string {
@@ -117,6 +119,8 @@ type HostMember struct {
 	Ret    Type // nil = void
 	GoRet  string
 	Throws bool
+	File   string // 方法的 Go 源码位置(hostgen 反射得到; 字段没有)
+	Line   int
 }
 type HostFnT struct{ M *HostMember }
 
@@ -217,6 +221,7 @@ type Symbol struct {
 	Host   *HostMember
 	Comp   *CompT
 	Async  bool
+	Pos    Pos // 声明位置(编辑器跳转用); 内建为空
 }
 
 type Scope struct {
@@ -231,6 +236,8 @@ type fnCtx struct {
 	async     bool
 	rets      []Type
 	want      Type
+	loops     int // 当前嵌套的循环层数(break/continue 合法性)
+	switches  int // 当前嵌套的 switch 层数(break 合法性)
 }
 
 func newScope(parent *Scope) *Scope {

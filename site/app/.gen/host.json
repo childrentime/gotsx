@@ -19,7 +19,9 @@
           "ret": {
             "type": "Token[]",
             "go": "[]host.Token"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/site/host/host.go",
+          "line": 37
         }
       }
     },
@@ -32,7 +34,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/site/host/host.go",
+          "line": 162
         },
         "now": {
           "kind": "method",
@@ -40,7 +44,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/site/host/host.go",
+          "line": 163
         },
         "version": {
           "kind": "method",
@@ -48,7 +54,9 @@
           "ret": {
             "type": "string",
             "go": "string"
-          }
+          },
+          "file": "/Users/ziwei/work/github/gotsx/site/host/host.go",
+          "line": 164
         }
       }
     }

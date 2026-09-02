@@ -10,15 +10,21 @@ import (
 	"math"
 	"math/rand"
 	"net/url"
+	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Ctx 是一次渲染的输出缓冲。hydrate>0 表示正在岛内部, 动态部分要带标记给客户端走位。
 type Ctx struct {
 	b       strings.Builder
 	hydrate int
+	pending []*Pending // 本次渲染登记的 Suspense 边界(流式: 外壳先发, 这些随后并发填充)
+	seq     *uint32    // 边界 id 计数器, 嵌套渲染共享
 }
 
 func (c *Ctx) Raw(s string) { c.b.WriteString(s) }
@@ -32,6 +38,46 @@ func Render(n Node) string {
 		n(c)
 	}
 	return c.b.String()
+}
+
+// Pending: 一个尚未填充的 Suspense 边界
+type Pending struct {
+	ID string
+	Fn func() Node
+}
+
+// RenderPending: 渲染并返回登记的 Suspense 边界(请求层用它做流式)。seq 在嵌套填充之间共享。
+func RenderPending(n Node, seq *uint32) (string, []*Pending) {
+	c := &Ctx{seq: seq}
+	if n != nil {
+		n(c)
+	}
+	return c.b.String(), c.pending
+}
+
+func (c *Ctx) nextID() string {
+	if c.seq == nil {
+		c.seq = new(uint32)
+	}
+	*c.seq++
+	return "gs" + strconv.FormatUint(uint64(*c.seq), 10)
+}
+
+// Suspense: 流式 SSR 的边界。外壳里先输出 fallback; content 在外壳发出后、在自己的 goroutine 里求值,
+// 结果作为 <template> + 一小段脚本追加到响应末尾, 浏览器把它换进去。多个边界并发, 谁先完成先发谁。
+// 编译器把 <Suspense fallback={…}>children</Suspense> 编成 gotsx.Suspense(fallback, func() gotsx.Node { return children })。
+func Suspense(fallback Node, content func() Node) Node {
+	return func(c *Ctx) {
+		id := c.nextID()
+		c.pending = append(c.pending, &Pending{ID: id, Fn: content})
+		c.b.WriteString(`<gotsx-suspense id="`)
+		c.b.WriteString(id)
+		c.b.WriteString(`" style="display:contents">`)
+		if fallback != nil {
+			fallback(c)
+		}
+		c.b.WriteString("</gotsx-suspense>")
+	}
 }
 
 type Attr struct {
@@ -675,4 +721,313 @@ func LdScript(jsonStr string) Node {
 		c.b.WriteString(safe)
 		c.b.WriteString(`</script>`)
 	}
+}
+
+// ---------- 原地修改的数组方法(需要地址; JS 语义) ----------
+
+// Push: xs.push(a, b) → 新长度
+func Push[T any](xs *[]T, vs ...T) float64 {
+	*xs = append(*xs, vs...)
+	return float64(len(*xs))
+}
+
+// Pop: 弹出末尾(空数组返回零值, 对应 undefined)
+func Pop[T any](xs *[]T) T {
+	var zero T
+	n := len(*xs)
+	if n == 0 {
+		return zero
+	}
+	v := (*xs)[n-1]
+	*xs = (*xs)[:n-1]
+	return v
+}
+
+// Shift: 弹出开头
+func Shift[T any](xs *[]T) T {
+	var zero T
+	if len(*xs) == 0 {
+		return zero
+	}
+	v := (*xs)[0]
+	*xs = append([]T(nil), (*xs)[1:]...)
+	return v
+}
+
+// Unshift: 头插 → 新长度
+func Unshift[T any](xs *[]T, vs ...T) float64 {
+	out := make([]T, 0, len(*xs)+len(vs))
+	out = append(out, vs...)
+	*xs = append(out, *xs...)
+	return float64(len(*xs))
+}
+
+// Splice: xs.splice(start, deleteCount, ...items) → 被删除的元素; deleteCount<0 表示省略(删到末尾)
+func Splice[T any](xs *[]T, start, del float64, items ...T) []T {
+	n := len(*xs)
+	a := int(start)
+	if a < 0 {
+		a = n + a
+		if a < 0 {
+			a = 0
+		}
+	}
+	if a > n {
+		a = n
+	}
+	d := n - a
+	if del >= 0 && int(del) < d {
+		d = int(del)
+	}
+	if d < 0 {
+		d = 0
+	}
+	removed := make([]T, d)
+	copy(removed, (*xs)[a:a+d])
+	out := make([]T, 0, n-d+len(items))
+	out = append(out, (*xs)[:a]...)
+	out = append(out, items...)
+	out = append(out, (*xs)[a+d:]...)
+	*xs = out
+	return removed
+}
+
+func FindIndex[T any](xs []T, f func(T) bool) float64 {
+	for i, x := range xs {
+		if f(x) {
+			return float64(i)
+		}
+	}
+	return -1
+}
+func FindIndexI[T any](xs []T, f func(T, float64) bool) float64 {
+	for i, x := range xs {
+		if f(x, float64(i)) {
+			return float64(i)
+		}
+	}
+	return -1
+}
+func LastIndexOf[T comparable](xs []T, v T) float64 {
+	for i := len(xs) - 1; i >= 0; i-- {
+		if xs[i] == v {
+			return float64(i)
+		}
+	}
+	return -1
+}
+
+// ---------- 更多字符串方法 ----------
+
+func TrimStart(s string) string { return strings.TrimLeft(s, " \t\n\r\v\f\u00a0\ufeff") }
+func TrimEnd(s string) string   { return strings.TrimRight(s, " \t\n\r\v\f\u00a0\ufeff") }
+func StrLastIndexOf(s, sub string) float64 {
+	i := strings.LastIndex(s, sub)
+	if i < 0 {
+		return -1
+	}
+	return float64(len([]rune(s[:i])))
+}
+
+// Compare: localeCompare 的两端一致版本 —— 按码点比较(不做本地化排序), 客户端 G.cmp 同语义
+func Compare(a, b string) float64 {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
+}
+
+// StrAt: 字符串 .at(i), 负数从末尾数
+func StrAt(s string, i float64) string {
+	r := []rune(s)
+	k := int(i)
+	if k < 0 {
+		k += len(r)
+	}
+	if k < 0 || k >= len(r) {
+		return ""
+	}
+	return string(r[k])
+}
+
+// ---------- 零值 = undefined ----------
+
+// IsZero: obj === undefined 对复合类型的语义(Go 里"缺席"就是零值)
+func IsZero(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Map, reflect.Func, reflect.Pointer, reflect.Interface:
+		return rv.IsNil()
+	}
+	return rv.IsZero()
+}
+
+// NonZero: 可能缺席的对象在条件里的真值(find 没找到 → 零值 → false)
+func NonZero(v any) bool { return !IsZero(v) }
+
+// ---------- 页面级控制流: redirect / notFound ----------
+
+// RedirectError: 方言里 redirect(url, status) 抛出, 请求层变成 HTTP 重定向
+type RedirectError struct {
+	URL    string
+	Status int
+}
+
+func (e *RedirectError) Error() string { return fmt.Sprintf("redirect %d → %s", e.Status, e.URL) }
+
+// Redirect: 中断本次渲染, 让请求层回 3xx。返回 Node 只是为了能写 return redirect("/")
+func Redirect(url string, status float64) Node {
+	code := int(status)
+	if code < 300 || code > 399 {
+		code = 302
+	}
+	panic(&RedirectError{URL: url, Status: code})
+}
+
+// NotFound: 中断本次渲染, 让请求层回 404 页
+func NotFound() Node {
+	panic(&HostError{Err: ErrNotFound})
+}
+
+// ---------- 文件约定: _layout / _404 / _error ----------
+
+// LayoutProps: pages/**/_layout.server.tsx 的 props —— 页面 props 加上被包裹的内容
+type LayoutProps struct {
+	PageProps
+	Children Node `json:"-"`
+}
+
+// ErrorProps: pages/_error.server.tsx 的 props —— 页面 props 加上错误信息(生产模式下是通用文案)
+type ErrorProps struct {
+	PageProps
+	Message string `json:"message"`
+}
+
+// HasKey: Object.hasOwn(record, key) —— 区分"键不存在"与"值是零值"
+func HasKey[V any](m map[string]V, k string) bool {
+	_, ok := m[k]
+	return ok
+}
+
+// ---------- 正则(RE2 子集, 编译期已校验) ----------
+
+// Regex: 方言的 RegExp; Global 对应 g 标志(replace 全部 / match 全部)
+type Regex struct {
+	*regexp.Regexp
+	Global bool
+}
+
+var reCache sync.Map
+
+// Re: 正则字面量 → 编译一次缓存(模式已由编译器转成 RE2 语法)
+func Re(pattern, flags string) *Regex {
+	key := flags + "/" + pattern
+	if v, ok := reCache.Load(key); ok {
+		return v.(*Regex)
+	}
+	r := &Regex{Regexp: regexp.MustCompile(pattern), Global: strings.Contains(flags, "g")}
+	reCache.Store(key, r)
+	return r
+}
+
+func ReTest(re *Regex, s string) bool { return re.MatchString(s) }
+
+// jsRepl: JS 的替换模板($& $1 $$)→ Go 的 ${0} ${1} $$
+func jsRepl(repl string) string {
+	var b strings.Builder
+	for i := 0; i < len(repl); i++ {
+		if repl[i] != '$' || i+1 >= len(repl) {
+			b.WriteByte(repl[i])
+			continue
+		}
+		switch n := repl[i+1]; {
+		case n == '&':
+			b.WriteString("${0}")
+			i++
+		case n == '$':
+			b.WriteString("$$")
+			i++
+		case n >= '0' && n <= '9':
+			j := i + 1
+			for j < len(repl) && repl[j] >= '0' && repl[j] <= '9' {
+				j++
+			}
+			b.WriteString("${" + repl[i+1:j] + "}")
+			i = j - 1
+		default:
+			b.WriteString("$$")
+		}
+	}
+	return b.String()
+}
+
+// ReReplace: s.replace(re, repl) —— g 标志替换全部, 否则只替换第一个
+func ReReplace(s string, re *Regex, repl string) string {
+	tmpl := jsRepl(repl)
+	if re.Global {
+		return re.ReplaceAllString(s, tmpl)
+	}
+	loc := re.FindStringSubmatchIndex(s)
+	if loc == nil {
+		return s
+	}
+	var dst []byte
+	dst = re.ExpandString(dst, tmpl, s, loc)
+	return s[:loc[0]] + string(dst) + s[loc[1]:]
+}
+
+// ReMatch: s.match(re) —— g: 全部匹配; 否则 [整体, 分组...]; 没匹配 → 空数组(客户端 G.match 同语义)
+func ReMatch(s string, re *Regex) []string {
+	if re.Global {
+		out := re.FindAllString(s, -1)
+		if out == nil {
+			return []string{}
+		}
+		return out
+	}
+	m := re.FindStringSubmatch(s)
+	if m == nil {
+		return []string{}
+	}
+	return m
+}
+
+func ReSplit(s string, re *Regex) []string { return re.Split(s, -1) }
+
+// ReSearch: 第一个匹配的 rune 下标, 没有 → -1
+func ReSearch(s string, re *Regex) float64 {
+	loc := re.FindStringIndex(s)
+	if loc == nil {
+		return -1
+	}
+	return float64(len([]rune(s[:loc[0]])))
+}
+
+// ---------- 时间 ----------
+
+// Now: Date.now() —— 毫秒
+func Now() float64 { return float64(time.Now().UnixMilli()) }
+
+// DateParse: Date.parse(iso) —— RFC3339 / 2006-01-02 → 毫秒, 失败 NaN
+func DateParse(s string) float64 {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return float64(t.UnixMilli())
+		}
+	}
+	return math.NaN()
+}
+
+// IsoDate: 毫秒 → RFC3339(UTC, 毫秒精度), 与客户端 toISOString 一致
+func IsoDate(ms float64) string {
+	if math.IsNaN(ms) || math.IsInf(ms, 0) {
+		return ""
+	}
+	return time.UnixMilli(int64(ms)).UTC().Format("2006-01-02T15:04:05.000Z")
 }

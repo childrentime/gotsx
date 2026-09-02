@@ -10,7 +10,7 @@ export default function TagPicker({ tags }: { tags: string[] }) {
       {tags.map((t) => (
         <button class={picked.includes(t) ? "chip on" : "chip"} onClick={() => toggle(t)}>{t}</button>
       ))}
-      {picked.length > 0 && <span class="muted">已选 {picked.length} 个: {picked.join(", ")}</span>}
+      {picked.length > 0 && <span class="muted">{picked.length} picked: {picked.join(", ")}</span>}
     </div>
   );
 }

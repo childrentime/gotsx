@@ -44,19 +44,21 @@ func (p *parser) accept(v string) bool {
 }
 func (p *parser) expect(v string) {
 	if !p.accept(v) {
-		p.fail("期望 %q, 遇到 %s", v, p.describe())
+		p.fail("expected %q, got %s", v, p.describe())
 	}
 }
 func (p *parser) describe() string {
 	switch p.tok.Kind {
 	case TEOF:
-		return "文件结尾"
+		return "end of file"
 	case TStr:
-		return fmt.Sprintf("字符串 %q", p.tok.Val)
+		return fmt.Sprintf("string %q", p.tok.Val)
 	case TTemplate:
-		return "模板字符串"
+		return "template string"
+	case TRegex:
+		return "regex literal"
 	case TJSXText:
-		return "JSX 文本"
+		return "JSX text"
 	}
 	return fmt.Sprintf("%q", p.tok.Val)
 }
@@ -65,7 +67,7 @@ func (p *parser) fail(format string, args ...any) {
 }
 func (p *parser) ident() string {
 	if p.tok.Kind != TIdent {
-		p.fail("期望标识符, 遇到 %s", p.describe())
+		p.fail("expected an identifier, got %s", p.describe())
 	}
 	n := p.tok.Val
 	p.next()
@@ -160,11 +162,11 @@ func (p *parser) parseImport() *Import {
 		p.expect("}")
 	}
 	if !p.isKw("from") {
-		p.fail("import 缺少 from")
+		p.fail("import is missing 'from'")
 	}
 	p.next()
 	if p.tok.Kind != TStr {
-		p.fail("import 缺少模块路径")
+		p.fail("import is missing the module path")
 	}
 	im.From = p.tok.Val
 	p.next()
@@ -203,7 +205,13 @@ func (p *parser) parseStmt() Stmt {
 		p.next()
 		d := &InterfaceDecl{Pos: pos, Name: p.ident(), Export: export}
 		if p.isKw("extends") {
-			p.fail("子集不支持 interface extends")
+			p.next()
+			for {
+				d.Extends = append(d.Extends, p.ident())
+				if !p.accept(",") {
+					break
+				}
+			}
 		}
 		d.Fields = p.parseObjTypeFields()
 		return d
@@ -215,7 +223,7 @@ func (p *parser) parseStmt() Stmt {
 		p.accept(";")
 		return d
 	case export:
-		p.fail("export 后面只能跟 function / const / interface / type")
+		p.fail("export must be followed by function / const / interface / type")
 	case p.isKw("return"):
 		p.next()
 		r := &ReturnStmt{Pos: pos}
@@ -240,21 +248,26 @@ func (p *parser) parseStmt() Stmt {
 		}
 		return s
 	case p.isKw("for"):
+		return p.parseFor(pos)
+	case p.isKw("while"):
 		p.next()
 		p.expect("(")
-		if !(p.isKw("const") || p.isKw("let")) {
-			p.fail("子集只支持 for (const x of xs)")
-		}
-		p.next()
-		s := &ForOfStmt{Pos: pos, Pat: p.parsePattern()}
-		if !p.isKw("of") {
-			p.fail("子集只支持 for (const x of xs)")
-		}
-		p.next()
-		s.Iter = p.parseExpr()
+		s := &WhileStmt{Pos: pos, Cond: p.parseExpr()}
 		p.expect(")")
 		s.Body = p.parseBlockOrStmt()
 		return s
+	case p.isKw("do"):
+		p.fail("do-while is not in the subset; rewrite it as a while loop")
+	case p.isKw("break"):
+		p.next()
+		p.accept(";")
+		return &BreakStmt{Pos: pos}
+	case p.isKw("continue"):
+		p.next()
+		p.accept(";")
+		return &ContinueStmt{Pos: pos}
+	case p.isKw("switch"):
+		return p.parseSwitch(pos)
 	case p.isKw("try"):
 		p.next()
 		s := &TryStmt{Pos: pos, Body: p.parseBlock()}
@@ -301,6 +314,94 @@ func (p *parser) peekIsIdentThenEq() bool {
 	return p.is("=") || p.is("<")
 }
 
+// for (const x of xs) | for (let i = 0; i < n; i++) | for (; cond; )
+func (p *parser) parseFor(pos Pos) Stmt {
+	p.next() // for
+	p.expect("(")
+	if p.isKw("const") || p.isKw("let") || p.isKw("var") {
+		declPos := p.tok.Pos
+		isConst := p.isKw("const")
+		p.next()
+		pat := p.parsePattern()
+		if p.isKw("of") {
+			p.next()
+			s := &ForOfStmt{Pos: pos, Pat: pat}
+			s.Iter = p.parseExpr()
+			p.expect(")")
+			s.Body = p.parseBlockOrStmt()
+			return s
+		}
+		if p.isKw("in") {
+			p.fail("for-in is not in the subset; use for-of over Object.keys(obj)")
+		}
+		d := &VarDecl{Pos: declPos, Const: isConst, Pat: pat}
+		if p.accept(":") {
+			d.Type = p.parseType()
+		}
+		if p.accept("=") {
+			d.Init = p.parseExpr()
+		}
+		if p.is(",") {
+			p.fail("declaring several variables in one statement is not in the subset")
+		}
+		p.expect(";")
+		return p.parseForRest(pos, d)
+	}
+	var init Stmt
+	if !p.is(";") {
+		init = &ExprStmt{Pos: p.tok.Pos, X: p.parseExpr()}
+	}
+	p.expect(";")
+	return p.parseForRest(pos, init)
+}
+
+func (p *parser) parseForRest(pos Pos, init Stmt) Stmt {
+	s := &ForStmt{Pos: pos, Init: init}
+	if !p.is(";") {
+		s.Cond = p.parseExpr()
+	}
+	p.expect(";")
+	if !p.is(")") {
+		s.Update = p.parseExpr()
+	}
+	p.expect(")")
+	s.Body = p.parseBlockOrStmt()
+	return s
+}
+
+func (p *parser) parseSwitch(pos Pos) Stmt {
+	p.next() // switch
+	p.expect("(")
+	s := &SwitchStmt{Pos: pos, Disc: p.parseExpr()}
+	p.expect(")")
+	p.expect("{")
+	for !p.is("}") {
+		c := &SwitchCase{Pos: p.tok.Pos}
+		switch {
+		case p.isKw("case"):
+			p.next()
+			c.Test = p.parseExpr()
+		case p.isKw("default"):
+			p.next()
+		default:
+			p.fail("expected case / default inside switch, got %s", p.describe())
+		}
+		p.expect(":")
+		for !p.isKw("case") && !p.isKw("default") && !p.is("}") {
+			if p.tok.Kind == TEOF {
+				p.fail("unterminated switch")
+			}
+			st := p.parseStmt()
+			if _, ok := st.(*EmptyStmt); !ok {
+				c.Body = append(c.Body, st)
+			}
+		}
+		s.Cases = append(s.Cases, c)
+	}
+	p.next() // }
+	return s
+}
+
 func (p *parser) parseBlockOrStmt() *Block {
 	if p.is("{") {
 		return p.parseBlock()
@@ -314,7 +415,7 @@ func (p *parser) parseBlock() *Block {
 	p.expect("{")
 	for !p.is("}") {
 		if p.tok.Kind == TEOF {
-			p.fail("代码块没有闭合")
+			p.fail("unterminated block")
 		}
 		s := p.parseStmt()
 		if _, ok := s.(*EmptyStmt); !ok {
@@ -334,7 +435,7 @@ func (p *parser) parseFunc() *FuncDecl {
 	p.next() // function
 	f.Name = p.ident()
 	if p.is("<") {
-		p.fail("子集不支持泛型函数")
+		p.fail("generic functions are not in the subset")
 	}
 	f.Params = p.parseParams()
 	if p.accept(":") {
@@ -426,7 +527,7 @@ func (p *parser) parseVarDecl() *VarDecl {
 		d.Init = p.parseExpr()
 	}
 	if p.is(",") {
-		p.fail("子集不支持一条语句声明多个变量")
+		p.fail("declaring several variables in one statement is not in the subset")
 	}
 	p.accept(";")
 	return d
@@ -466,7 +567,7 @@ func (p *parser) parsePrimaryType() TypeExpr {
 		return &TStrLit{Val: v}
 	case p.tok.Kind == TIdent:
 		if p.isKw("typeof") || p.isKw("keyof") {
-			p.fail("子集不支持 %s 类型", p.tok.Val)
+			p.fail("%s types are not in the subset", p.tok.Val)
 		}
 		r := &TRef{Pos: pos, Name: p.ident()}
 		for p.accept(".") {
@@ -504,7 +605,7 @@ func (p *parser) parsePrimaryType() TypeExpr {
 		p.expect(")")
 		return t
 	}
-	p.fail("无法解析类型, 遇到 %s", p.describe())
+	p.fail("cannot parse a type here, got %s", p.describe())
 	return nil
 }
 
@@ -534,7 +635,7 @@ func (p *parser) parseObjTypeFields() []*TypeField {
 		fs = append(fs, f)
 		if !p.accept(";") && !p.accept(",") {
 			if !p.is("}") && !p.tok.NL {
-				p.fail("类型字段之间需要 ; 或换行")
+				p.fail("type members must be separated by ; or a newline")
 			}
 		}
 	}
@@ -553,7 +654,7 @@ func (p *parser) parseAssign() Expr {
 	l := p.parseCond()
 	if p.tok.Kind == TPunct {
 		switch p.tok.Val {
-		case "=", "+=", "-=", "*=", "/=":
+		case "=", "+=", "-=", "*=", "/=", "%=":
 			op := p.tok.Val
 			pos := p.tok.Pos
 			p.next()
@@ -668,6 +769,11 @@ func (p *parser) parseUnary() Expr {
 		p.next()
 		return &Unary{base: base{Pos: pos}, Op: op, X: p.parseUnary()}
 	}
+	if p.tok.Kind == TPunct && (p.tok.Val == "++" || p.tok.Val == "--") {
+		op := p.tok.Val
+		p.next()
+		return &Update{base: base{Pos: pos}, Op: op, X: p.parseUnary(), Prefix: true}
+	}
 	if p.isKw("await") {
 		p.next()
 		return &AwaitExpr{base: base{Pos: pos}, X: p.parseUnary()}
@@ -675,6 +781,10 @@ func (p *parser) parseUnary() Expr {
 	if p.isKw("typeof") {
 		p.next()
 		return &Unary{base: base{Pos: pos}, Op: "typeof", X: p.parseUnary()}
+	}
+	if p.isKw("delete") {
+		p.next()
+		return &Unary{base: base{Pos: pos}, Op: "delete", X: p.parseUnary()}
 	}
 	return p.parsePostfix()
 }
@@ -739,6 +849,10 @@ func (p *parser) parsePostfix() Expr {
 		case p.is("!") && !p.tok.NL:
 			p.next()
 			x = &NonNull{base: base{Pos: pos}, X: x}
+		case (p.is("++") || p.is("--")) && !p.tok.NL:
+			op := p.tok.Val
+			p.next()
+			x = &Update{base: base{Pos: pos}, Op: op, X: x}
 		case p.isKw("as"):
 			p.next()
 			x = &AsExpr{base: base{Pos: pos}, X: x, Type: p.parseType()}
@@ -784,6 +898,10 @@ func (p *parser) parsePrimary() Expr {
 		v := p.tok.Val
 		p.next()
 		return &StrLit{base: base{Pos: pos}, Val: v}
+	case TRegex:
+		t := p.tok
+		p.next()
+		return &RegexLit{base: base{Pos: pos}, Pattern: t.Val, Flags: t.Flags}
 	case TTemplate:
 		t := p.tok
 		p.next()
@@ -792,7 +910,7 @@ func (p *parser) parsePrimary() Expr {
 			sub := newParser(src, p.file, t.ExprPos[i])
 			e := sub.parseExpr()
 			if sub.tok.Kind != TEOF {
-				sub.fail("模板字符串里的表达式有多余内容")
+				sub.fail("unexpected trailing content in a template-string expression")
 			}
 			tl.Exprs = append(tl.Exprs, e)
 		}
@@ -807,9 +925,9 @@ func (p *parser) parsePrimary() Expr {
 			p.next()
 			return &NullLit{base: base{Pos: pos}}
 		case "function":
-			p.fail("子集不支持 function 表达式, 请用箭头函数")
+			p.fail("function expressions are not in the subset; use an arrow function")
 		case "new", "class", "this", "yield", "delete", "void", "in", "instanceof":
-			p.fail("子集不支持 %s", p.tok.Val)
+			p.fail("%s is not in the subset", p.tok.Val)
 		}
 		name := p.ident()
 		return &Ident{base: base{Pos: pos}, Name: name}
@@ -841,7 +959,7 @@ func (p *parser) parsePrimary() Expr {
 			return p.parseJSX(false)
 		}
 	}
-	p.fail("无法解析表达式, 遇到 %s", p.describe())
+	p.fail("cannot parse an expression here, got %s", p.describe())
 	return nil
 }
 
@@ -862,7 +980,7 @@ func (p *parser) parseObjectLit() Expr {
 			if p.accept(":") {
 				o.Props = append(o.Props, &ObjProp{Key: key, Val: p.parseAssign()})
 			} else if p.is("(") {
-				p.fail("子集不支持对象方法简写")
+				p.fail("object method shorthand is not in the subset")
 			} else {
 				o.Props = append(o.Props, &ObjProp{Key: key, Val: &Ident{base: base{Pos: p.tok.Pos}, Name: key}, Shorthand: true})
 			}
@@ -877,7 +995,7 @@ func (p *parser) parseObjectLit() Expr {
 
 // ---------- JSX ----------
 // 约定: 进入子节点模式时, p.tok 是刚扫到的 ">"/"}", 词法器位置在其后; 文本由 lx.jsxText 直接读。
-// inChildren=true 时, 元素结束后不扫描下一个普通 token(留给父级读 JSX 文本)。
+// inChildren=true 时, 元素结束后不扫描下一个普通 token(留给父级读 JSX text)。
 
 func (p *parser) parseJSX(inChildren bool) Expr {
 	pos := p.tok.Pos
@@ -904,7 +1022,7 @@ func (p *parser) parseJSX(inChildren bool) Expr {
 			continue
 		}
 		if p.tok.Kind != TIdent {
-			p.fail("JSX 属性名不合法, 遇到 %s", p.describe())
+			p.fail("invalid JSX attribute name, got %s", p.describe())
 		}
 		name := p.tok.Val
 		for p.lx.at(0) == '-' || p.lx.at(0) == ':' {
@@ -924,7 +1042,7 @@ func (p *parser) parseJSX(inChildren bool) Expr {
 				a.Val = p.parseExpr()
 				p.expect("}")
 			} else {
-				p.fail("JSX 属性值必须是字符串或 {表达式}")
+				p.fail("a JSX attribute value must be a string or {expression}")
 			}
 		}
 		el.Attrs = append(el.Attrs, a)
@@ -932,7 +1050,7 @@ func (p *parser) parseJSX(inChildren bool) Expr {
 	if p.is("/") { // 自闭合
 		p.next()
 		if !p.is(">") {
-			p.fail("自闭合标签缺少 >")
+			p.fail("self-closing tag is missing >")
 		}
 		if !inChildren {
 			p.next()
@@ -965,7 +1083,7 @@ func (p *parser) parseJSXChildren(tag string) []Expr {
 			}
 			x := p.parseExpr()
 			if !p.is("}") {
-				p.fail("JSX 表达式缺少 }")
+				p.fail("JSX expression is missing }")
 			}
 			kids = append(kids, &JSXExprChild{base: base{Pos: pos}, X: x})
 		case p.is("<"):
@@ -974,7 +1092,7 @@ func (p *parser) parseJSXChildren(tag string) []Expr {
 				p.next() // 标签名 或 ">"
 				if tag == "" {
 					if !p.is(">") {
-						p.fail("fragment 闭合应为 </>")
+						p.fail("a fragment must be closed with </>")
 					}
 					return kids
 				}
@@ -983,18 +1101,18 @@ func (p *parser) parseJSXChildren(tag string) []Expr {
 					name += "." + p.ident()
 				}
 				if name != tag {
-					p.fail("闭标签 </%s> 与开标签 <%s> 不匹配", name, tag)
+					p.fail("closing tag </%s> does not match opening tag <%s>", name, tag)
 				}
 				if !p.is(">") {
-					p.fail("闭标签缺少 >")
+					p.fail("closing tag is missing >")
 				}
 				return kids
 			}
 			kids = append(kids, p.parseJSX(true))
 		case p.tok.Kind == TEOF:
-			p.fail("JSX <%s> 没有闭合", tag)
+			p.fail("JSX <%s> is not closed", tag)
 		default:
-			p.fail("JSX 里遇到意外的 %s", p.describe())
+			p.fail("unexpected %s inside JSX", p.describe())
 		}
 	}
 }

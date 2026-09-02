@@ -4,11 +4,12 @@ package host
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	gotsx "gotsx/runtime"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 type Model struct {
@@ -74,6 +75,32 @@ func (s *ModelStore) Like(id string) (int, error) {
 
 type DataModule struct {
 	Models *ModelStore `json:"models"`
+}
+
+// Stats / Trending: 慢查询(模拟数据库延迟), 页面把它们放进 <Suspense> —— 外壳先到, 这两个在各自的 goroutine 里并发填充
+type Stats struct {
+	Total int `json:"total"`
+	Likes int `json:"likes"`
+}
+
+func (d *DataModule) Stats() Stats {
+	time.Sleep(600 * time.Millisecond)
+	var s Stats
+	for _, m := range d.Models.List() {
+		s.Total++
+		s.Likes += m.Likes
+	}
+	return s
+}
+
+func (d *DataModule) Trending() []Model {
+	time.Sleep(300 * time.Millisecond)
+	all := d.Models.List()
+	sort.Slice(all, func(i, j int) bool { return all[i].Likes > all[j].Likes })
+	if len(all) > 3 {
+		all = all[:3]
+	}
+	return all
 }
 
 type IntlModule struct{}

@@ -61,6 +61,16 @@ func stmtPos(s Stmt) Pos {
 		return d.Pos
 	case *ForOfStmt:
 		return d.Pos
+	case *ForStmt:
+		return d.Pos
+	case *WhileStmt:
+		return d.Pos
+	case *SwitchStmt:
+		return d.Pos
+	case *BreakStmt:
+		return d.Pos
+	case *ContinueStmt:
+		return d.Pos
 	case *ExprStmt:
 		return d.Pos
 	case *ThrowStmt:
@@ -132,6 +142,8 @@ func (g *goGen) goType(t Type) string {
 			return "bool"
 		case TNode:
 			return "gotsx.Node"
+		case TRegExp:
+			return "*gotsx.Regex"
 		case TVoid:
 			return ""
 		}
@@ -402,6 +414,18 @@ func (g *goGen) stmt(s Stmt) {
 		}
 		g.block(d.Body)
 		g.line("}")
+	case *WhileStmt:
+		g.line("for %s {", g.truthy(d.Cond))
+		g.block(d.Body)
+		g.line("}")
+	case *ForStmt:
+		g.forStmt(d)
+	case *BreakStmt:
+		g.line("break")
+	case *ContinueStmt:
+		g.line("continue")
+	case *SwitchStmt:
+		g.switchStmt(d)
 	case *ExprStmt:
 		g.exprStmt(d.X)
 	case *Block:
@@ -431,7 +455,7 @@ func (g *goGen) stmt(s Stmt) {
 		g.line("_ = %s", d.Sym.Go)
 	case *InterfaceDecl, *TypeAlias, *EmptyStmt:
 	default:
-		g.fail(Pos{}, "Go 后端不支持语句 %T", s)
+		g.fail(Pos{}, "Go backend: unsupported statement %T", s)
 	}
 }
 
@@ -452,16 +476,213 @@ func (g *goGen) exprStmt(x Expr) {
 		}
 		g.line("%s", g.expr(e))
 	case *Assign:
-		if e.Op == "=" {
-			g.line("%s = %s", g.expr(e.Target), g.conv(e.Val, e.Target.T()))
-		} else {
-			g.line("%s %s %s", g.expr(e.Target), e.Op, g.expr(e.Val))
+		g.line("%s", g.assign(e))
+	case *Update:
+		g.line("%s", g.update(e))
+	case *Unary:
+		if e.Op == "delete" {
+			g.line("%s", g.deleteKey(e))
+			return
 		}
+		g.line("_ = %s", g.expr(x))
 	case *AwaitExpr:
 		return
 	default:
 		g.line("_ = %s", g.expr(x))
 	}
+}
+
+// deleteKey: delete m[k] / delete m.k → delete(m, k)
+func (g *goGen) deleteKey(e *Unary) string {
+	switch t := e.X.(type) {
+	case *Index:
+		return "delete(" + g.expr(t.X) + ", " + g.expr(t.I) + ")"
+	case *Member:
+		return "delete(" + g.expr(t.X) + ", " + strconv.Quote(t.Name) + ")"
+	}
+	g.fail(e.Pos, "delete only works on a Record key")
+	return ""
+}
+
+// simpleStmt: for 的 init / post 位置(Go 只接受简单语句)
+func (g *goGen) simpleStmt(x Expr) string {
+	switch e := x.(type) {
+	case *Assign:
+		return g.assign(e)
+	case *Update:
+		return g.update(e)
+	case *Paren:
+		return g.simpleStmt(e.X)
+	}
+	return g.expr(x)
+}
+
+func (g *goGen) forStmt(d *ForStmt) {
+	init, post := "", ""
+	var loopVar *Symbol
+	if d.Init != nil {
+		switch i := d.Init.(type) {
+		case *VarDecl:
+			loopVar = i.Pat.Sym
+			v := g.zero(loopVar.Type)
+			if i.Init != nil {
+				v = g.conv(i.Init, loopVar.Type)
+			}
+			if isNumber(loopVar.Type) {
+				v = "float64(" + v + ")" // 字面量 0 会被 Go 推成 int
+			}
+			init = loopVar.Go + " := " + v
+		case *ExprStmt:
+			init = g.simpleStmt(i.X)
+		}
+	}
+	cond := ""
+	if d.Cond != nil {
+		cond = g.truthy(d.Cond)
+	}
+	if d.Update != nil {
+		post = g.simpleStmt(d.Update)
+	}
+	g.line("for %s; %s; %s {", init, cond, post)
+	if loopVar != nil {
+		g.ind++
+		g.line("_ = %s", loopVar.Go)
+		g.ind--
+	}
+	g.block(d.Body)
+	g.line("}")
+}
+
+// switchStmt: JS 的 switch 默认贯穿, Go 默认不贯穿 —— 空 case 合并成 case a, b:, 没有 break/return 结尾的补 fallthrough
+func (g *goGen) switchStmt(d *SwitchStmt) {
+	dt := d.Disc.T()
+	g.line("switch %s {", g.expr(d.Disc))
+	var pending []string
+	hasDefault := false
+	for idx, cs := range d.Cases {
+		last := idx == len(d.Cases)-1
+		if cs.Test == nil {
+			hasDefault = true
+		} else {
+			pending = append(pending, g.conv(cs.Test, unopt(dt)))
+		}
+		if len(cs.Body) == 0 && !last {
+			continue // 空 case: 与下一个合并
+		}
+		if hasDefault {
+			g.line("default:")
+		} else {
+			g.line("case %s:", strings.Join(pending, ", "))
+		}
+		pending, hasDefault = nil, false
+		body := cs.Body
+		jump := false
+		if n := len(body); n > 0 {
+			switch body[n-1].(type) {
+			case *BreakStmt:
+				body = body[:n-1] // Go 的 case 自带 break
+				jump = true
+			case *ReturnStmt, *ThrowStmt, *ContinueStmt:
+				jump = true
+			}
+		}
+		g.ind++
+		g.stmts(body)
+		if !jump && !last {
+			g.line("fallthrough")
+		}
+		g.ind--
+	}
+	g.line("}")
+}
+
+// assign: x = v / x += v, 目标可以是变量 / 字段 / Record 键 / 数组下标
+func (g *goGen) assign(e *Assign) string {
+	lhs, goType := g.lvalue(e.Target)
+	if e.Op == "=" {
+		v := g.conv(e.Val, e.Target.T())
+		if numConv(goType) {
+			v = goType + "(" + v + ")"
+		}
+		return lhs + " = " + v
+	}
+	op := strings.TrimSuffix(e.Op, "=")
+	if numConv(goType) { // 宿主的 int 字段: 转成 float64 算再转回去
+		return fmt.Sprintf("%s = %s(float64(%s) %s (%s))", lhs, goType, lhs, op, g.expr(e.Val))
+	}
+	if op == "%" {
+		return fmt.Sprintf("%s = gotsx.Mod(%s, %s)", lhs, lhs, g.expr(e.Val))
+	}
+	if op == "+" && isString(e.Target.T()) {
+		return lhs + " += " + g.strOf(e.Val)
+	}
+	return lhs + " " + e.Op + " " + g.expr(e.Val)
+}
+
+// update: x++ / x-- 作为语句
+func (g *goGen) update(e *Update) string {
+	lhs, goType := g.lvalue(e.X)
+	if numConv(goType) {
+		return fmt.Sprintf("%s = %s(float64(%s) %s 1)", lhs, goType, lhs, string(e.Op[0]))
+	}
+	return lhs + e.Op
+}
+
+// lvalue: 可赋值位置的 Go 表达式 + 宿主字段的原始 Go 类型(数值转换用)
+func (g *goGen) lvalue(e Expr) (string, string) {
+	switch x := e.(type) {
+	case *Paren:
+		return g.lvalue(x.X)
+	case *Ident:
+		return g.ident(x), ""
+	case *Member:
+		switch t := unopt(x.X.T()).(type) {
+		case *ObjT:
+			if f := t.Field(x.Name); f != nil {
+				return g.expr(x.X) + "." + f.Go, f.GoType
+			}
+		case *MapT:
+			return g.expr(x.X) + "[" + strconv.Quote(x.Name) + "]", ""
+		}
+	case *Index:
+		switch unopt(x.X.T()).(type) {
+		case *ArrT:
+			return g.expr(x.X) + "[int(" + g.expr(x.I) + ")]", ""
+		case *MapT:
+			return g.expr(x.X) + "[" + g.expr(x.I) + "]", ""
+		}
+	}
+	g.fail(e.GetPos(), "Go backend: cannot assign to this expression")
+	return "", ""
+}
+
+// addr: push/pop/splice 需要数组的地址(&xs)
+func (g *goGen) addr(e Expr) string {
+	switch x := e.(type) {
+	case *Paren:
+		return g.addr(x.X)
+	case *Ident:
+		return "&" + g.ident(x)
+	case *Member:
+		if t, ok := unopt(x.X.T()).(*ObjT); ok {
+			if f := t.Field(x.Name); f != nil {
+				if numConvSlice(f.GoType) {
+					g.fail(x.Pos, "a host numeric-array field is a converted copy and cannot be mutated in place; copy it into a variable first")
+				}
+				return "&" + g.expr(x.X) + "." + f.Go
+			}
+		}
+		if _, ok := unopt(x.X.T()).(*MapT); ok {
+			g.fail(x.Pos, "an array inside a Record cannot be mutated in place (Go map elements are not addressable); read it into a variable first")
+		}
+	case *Index:
+		if _, ok := unopt(x.X.T()).(*ArrT); ok {
+			return "&" + g.expr(x.X) + "[int(" + g.expr(x.I) + ")]"
+		}
+		g.fail(x.Pos, "an array inside a Record cannot be mutated in place (Go map elements are not addressable); read it into a variable first")
+	}
+	g.fail(e.GetPos(), "in-place mutation needs a variable / field / index")
+	return ""
 }
 
 var clientOnlyGlobals = map[string]bool{"fetch": true, "setTimeout": true, "clearTimeout": true, "setInterval": true, "clearInterval": true,
@@ -514,6 +735,22 @@ func clientOnly(n any) bool {
 		case *ForOfStmt:
 			walkE(d.Iter)
 			walkS(d.Body)
+		case *ForStmt:
+			walkS(d.Init)
+			walkE(d.Cond)
+			walkE(d.Update)
+			walkS(d.Body)
+		case *WhileStmt:
+			walkE(d.Cond)
+			walkS(d.Body)
+		case *SwitchStmt:
+			walkE(d.Disc)
+			for _, cs := range d.Cases {
+				walkE(cs.Test)
+				for _, x := range cs.Body {
+					walkS(x)
+				}
+			}
 		case *Block:
 			for _, x := range d.Stmts {
 				walkS(x)
@@ -639,6 +876,11 @@ func (g *goGen) truthy(e Expr) string {
 	if u, ok := e.(*Unary); ok && u.Op == "!" {
 		return "!(" + g.truthy(u.X) + ")"
 	}
+	if o, ok := e.T().(*OptT); ok { // 可能缺席的对象(如 find 的结果): 零值即 undefined
+		if _, isObj := o.Elem.(*ObjT); isObj {
+			return "gotsx.NonZero(" + g.expr(e) + ")"
+		}
+	}
 	t := unopt(e.T())
 	switch x := t.(type) {
 	case *Prim:
@@ -673,6 +915,8 @@ func (g *goGen) expr(e Expr) string {
 			return "true"
 		}
 		return "false"
+	case *RegexLit:
+		return "gotsx.Re(" + strconv.Quote(goRegex(x.Pattern, x.Flags)) + ", " + strconv.Quote(x.Flags) + ")"
 	case *NullLit:
 		return "nil"
 	case *TemplateLit:
@@ -696,7 +940,7 @@ func (g *goGen) expr(e Expr) string {
 			var fs []string
 			for _, p := range x.Props {
 				if p.Spread != nil {
-					g.fail(x.Pos, "Go 后端不支持对象展开")
+					g.fail(x.Pos, "Go backend: object spread is not supported")
 				}
 				fs = append(fs, strconv.Quote(p.Key)+": "+g.conv(p.Val, mt.Val))
 			}
@@ -704,12 +948,12 @@ func (g *goGen) expr(e Expr) string {
 		}
 		o, ok := unopt(x.T()).(*ObjT)
 		if !ok {
-			g.fail(x.Pos, "无法确定对象字面量的类型")
+			g.fail(x.Pos, "cannot determine the type of the object literal")
 		}
 		var fs []string
 		for _, p := range x.Props {
 			if p.Spread != nil {
-				g.fail(x.Pos, "Go 后端不支持对象展开")
+				g.fail(x.Pos, "Go backend: object spread is not supported")
 			}
 			f := o.Field(p.Key)
 			fs = append(fs, f.Go+": "+g.conv(p.Val, f.Type))
@@ -728,7 +972,7 @@ func (g *goGen) expr(e Expr) string {
 		if isString(xt) {
 			return "gotsx.CharAt(" + g.expr(x.X) + ", " + g.expr(x.I) + ")"
 		}
-		g.fail(x.Pos, "Go 后端不支持对 %s 的下标访问", xt)
+		g.fail(x.Pos, "Go backend: cannot index into %s", xt)
 	case *Call:
 		return g.call(x)
 	case *Unary:
@@ -737,8 +981,10 @@ func (g *goGen) expr(e Expr) string {
 			return "!(" + g.truthy(x.X) + ")"
 		case "-", "+":
 			return x.Op + g.expr(x.X)
+		case "delete":
+			return "func() bool { " + g.deleteKey(x) + "; return true }()"
 		}
-		g.fail(x.Pos, "Go 后端不支持 %s", x.Op)
+		g.fail(x.Pos, "Go backend: %s is not supported", x.Op)
 	case *Binary:
 		return g.binary(x)
 	case *CondExpr:
@@ -754,11 +1000,21 @@ func (g *goGen) expr(e Expr) string {
 	case *Arrow:
 		return g.arrow(x)
 	case *Assign:
-		g.fail(x.Pos, "Go 后端不支持表达式位置的赋值")
+		g.fail(x.Pos, "Go backend: assignment in expression position is not supported")
+	case *Update:
+		id, ok := x.X.(*Ident)
+		if !ok {
+			g.fail(x.Pos, "%s as an expression only works on a variable (or write it as a standalone statement)", x.Op)
+		}
+		name := g.ident(id)
+		if x.Prefix {
+			return fmt.Sprintf("func() float64 { %s%s; return %s }()", name, x.Op, name)
+		}
+		return fmt.Sprintf("func() float64 { v := %s; %s%s; return v }()", name, name, x.Op)
 	case *AsExpr:
 		return g.expr(x.X)
 	case *AwaitExpr:
-		g.fail(x.Pos, "await 只能在客户端代码里使用")
+		g.fail(x.Pos, "await can only be used in client code")
 	case *NonNull:
 		return g.expr(x.X)
 	case *Paren:
@@ -768,23 +1024,23 @@ func (g *goGen) expr(e Expr) string {
 	case *SpreadExpr:
 		return g.expr(x.X)
 	}
-	g.fail(e.GetPos(), "Go 后端不支持表达式 %T", e)
+	g.fail(e.GetPos(), "Go backend: unsupported expression %T", e)
 	return ""
 }
 
 func (g *goGen) ident(x *Ident) string {
 	s := x.Sym
 	if s == nil {
-		g.fail(x.Pos, "未解析的标识符 %s", x.Name)
+		g.fail(x.Pos, "unresolved identifier %s", x.Name)
 	}
 	switch s.Kind {
 	case SHostMember:
 		g.needHost = true
 		return s.Go
 	case SComp:
-		g.fail(x.Pos, "组件 %s 不能当值使用", x.Name)
+		g.fail(x.Pos, "component %s cannot be used as a value", x.Name)
 	case SBuiltin:
-		g.fail(x.Pos, "%s 只能在客户端代码里使用", x.Name)
+		g.fail(x.Pos, "%s can only be used in client code", x.Name)
 	}
 	return s.Go
 }
@@ -792,7 +1048,7 @@ func (g *goGen) ident(x *Ident) string {
 func (g *goGen) arrayLit(x *ArrayLit) string {
 	at, ok := unopt(x.T()).(*ArrT)
 	if !ok {
-		g.fail(x.Pos, "无法确定数组类型")
+		g.fail(x.Pos, "cannot determine the array type")
 	}
 	et := g.goType(at.Elem)
 	var parts []string
@@ -852,7 +1108,7 @@ func (g *goGen) member(x *Member) string {
 		g.needHost = true
 		return t.Go + "." + x.GoName
 	}
-	g.fail(x.Pos, "Go 后端不支持在 %s 上访问 %s", xt, x.Name)
+	g.fail(x.Pos, "Go backend: %s has no accessible member %s", xt, x.Name)
 	return ""
 }
 
@@ -894,8 +1150,18 @@ func (g *goGen) call(x *Call) string {
 			return "gotsx.FmtDate(" + g.expr(x.Args[0]) + ", " + g.expr(x.Args[1]) + ")"
 		case "lpath":
 			return "gotsx.LPath(" + g.expr(x.Args[0]) + ", " + g.expr(x.Args[1]) + ")"
+		case "isoDate":
+			return "gotsx.IsoDate(" + arg() + ")"
+		case "redirect":
+			code := "302"
+			if len(x.Args) == 2 {
+				code = g.expr(x.Args[1])
+			}
+			return "gotsx.Redirect(" + arg() + ", " + code + ")"
+		case "notFound":
+			return "gotsx.NotFound()"
 		}
-		g.fail(x.Pos, "%s 只能在客户端代码里使用", name)
+		g.fail(x.Pos, "%s can only be used in client code", name)
 	case x.Kind == "setter":
 		return g.expr(x.Fn) + "(" + g.expr(x.Args[0]) + ")"
 	case x.Kind == "hook:useMemo":
@@ -912,7 +1178,7 @@ func (g *goGen) call(x *Call) string {
 		}
 		return g.expr(x.Fn) + "(" + strings.Join(args, ", ") + ")"
 	}
-	g.fail(x.Pos, "Go 后端无法编译这个调用(%s)", x.Kind)
+	g.fail(x.Pos, "Go backend: cannot compile this call (%s)", x.Kind)
 	return ""
 }
 
@@ -925,7 +1191,7 @@ func (g *goGen) hostCall(x *Call, stmt bool) string {
 	case *Member:
 		callee = g.member(f)
 	default:
-		g.fail(x.Pos, "宿主调用形式不支持")
+		g.fail(x.Pos, "unsupported host call form")
 	}
 	g.needHost = true
 	var args []string
@@ -981,12 +1247,34 @@ func (g *goGen) builtinCall(x *Call) string {
 				return "gotsx.Map(" + recv + ", func(_ " + g.goType(r.Elem) + ") " + ret + " { return (" + g.expr(x.Args[0]) + ")() })"
 			}
 			return "gotsx.Map(" + recv + ", " + g.expr(x.Args[0]) + ")"
-		case "filter", "find", "some", "every", "forEach":
+		case "filter", "find", "some", "every", "forEach", "findIndex":
 			suffix := ""
 			if a, ok := x.Args[0].(*Arrow); ok && len(a.Params) == 2 {
 				suffix = "I"
 			}
 			return "gotsx." + strings.ToUpper(name[:1]) + name[1:] + suffix + "(" + recv + ", " + arg(0) + ")"
+		case "lastIndexOf":
+			return "gotsx.LastIndexOf(" + recv + ", " + g.conv(x.Args[0], r.Elem) + ")"
+		case "push", "unshift":
+			var as []string
+			for _, a := range x.Args {
+				as = append(as, g.conv(a, r.Elem))
+			}
+			return "gotsx." + strings.ToUpper(name[:1]) + name[1:] + "(" + g.addr(mem.X) + ", " + strings.Join(as, ", ") + ")"
+		case "pop", "shift":
+			return "gotsx." + strings.ToUpper(name[:1]) + name[1:] + "(" + g.addr(mem.X) + ")"
+		case "splice":
+			del := "-1" // 省略 deleteCount = 删到末尾
+			if len(x.Args) > 1 {
+				del = arg(1)
+			}
+			as := []string{g.addr(mem.X), arg(0), del}
+			if len(x.Args) > 2 {
+				for _, a := range x.Args[2:] {
+					as = append(as, g.conv(a, r.Elem))
+				}
+			}
+			return "gotsx.Splice(" + strings.Join(as, ", ") + ")"
 		case "includes":
 			return "gotsx.Includes(" + recv + ", " + g.conv(x.Args[0], r.Elem) + ")"
 		case "indexOf":
@@ -1001,9 +1289,12 @@ func (g *goGen) builtinCall(x *Call) string {
 			}
 			return "gotsx.JoinAny(" + recv + ", " + sep + ")"
 		case "slice":
-			var as []string
-			for i := range x.Args {
-				as = append(as, arg(i))
+			as := []string{"0"} // xs.slice() = 浅拷贝
+			if len(x.Args) > 0 {
+				as = nil
+				for i := range x.Args {
+					as = append(as, arg(i))
+				}
 			}
 			return "gotsx.Slice(" + strings.Join(append([]string{recv}, as...), ", ") + ")"
 		case "concat":
@@ -1020,7 +1311,20 @@ func (g *goGen) builtinCall(x *Call) string {
 			return "gotsx.Reduce(" + recv + ", " + arg(0) + ", " + arg(1) + ")"
 		}
 	case *Prim:
+		if r == TRegExp && name == "test" {
+			return "gotsx.ReTest(" + recv + ", " + arg(0) + ")"
+		}
 		if r == TString {
+			switch name {
+			case "re_replace", "re_replaceAll":
+				return "gotsx.ReReplace(" + recv + ", " + arg(0) + ", " + arg(1) + ")"
+			case "re_split":
+				return "gotsx.ReSplit(" + recv + ", " + arg(0) + ")"
+			case "re_match":
+				return "gotsx.ReMatch(" + recv + ", " + arg(0) + ")"
+			case "re_search":
+				return "gotsx.ReSearch(" + recv + ", " + arg(0) + ")"
+			}
 			switch name {
 			case "toUpperCase":
 				return "gotsx.Upper(" + recv + ")"
@@ -1028,6 +1332,18 @@ func (g *goGen) builtinCall(x *Call) string {
 				return "gotsx.Lower(" + recv + ")"
 			case "trim":
 				return "gotsx.Trim(" + recv + ")"
+			case "trimStart":
+				return "gotsx.TrimStart(" + recv + ")"
+			case "trimEnd":
+				return "gotsx.TrimEnd(" + recv + ")"
+			case "lastIndexOf":
+				return "gotsx.StrLastIndexOf(" + recv + ", " + arg(0) + ")"
+			case "localeCompare":
+				return "gotsx.Compare(" + recv + ", " + arg(0) + ")"
+			case "toString":
+				return recv
+			case "at":
+				return "gotsx.StrAt(" + recv + ", " + arg(0) + ")"
 			case "includes":
 				return "gotsx.StrIncludes(" + recv + ", " + arg(0) + ")"
 			case "startsWith":
@@ -1037,9 +1353,12 @@ func (g *goGen) builtinCall(x *Call) string {
 			case "split":
 				return "gotsx.Split(" + recv + ", " + arg(0) + ")"
 			case "slice":
-				var as []string
-				for i := range x.Args {
-					as = append(as, arg(i))
+				as := []string{"0"}
+				if len(x.Args) > 0 {
+					as = nil
+					for i := range x.Args {
+						as = append(as, arg(i))
+					}
 				}
 				return "gotsx.StrSlice(" + strings.Join(append([]string{recv}, as...), ", ") + ")"
 			case "replace":
@@ -1065,6 +1384,9 @@ func (g *goGen) builtinCall(x *Call) string {
 				}
 				return "gotsx.PadEnd(" + recv + ", " + arg(0) + ", " + p + ")"
 			}
+		}
+		if r == TNumber && name == "toString" {
+			return "gotsx.Num(" + recv + ")"
 		}
 		if r == TNumber && name == "toFixed" {
 			d := "0"
@@ -1100,16 +1422,25 @@ func (g *goGen) builtinCall(x *Call) string {
 			case "trunc":
 				return "gotsx.Trunc(" + arg(0) + ")"
 			}
+		case "Date":
+			switch name {
+			case "now":
+				return "gotsx.Now()"
+			case "parse":
+				return "gotsx.DateParse(" + arg(0) + ")"
+			}
 		case "Object":
 			switch name {
 			case "keys":
 				return "gotsx.ObjectKeys(" + arg(0) + ")"
 			case "values":
 				return "gotsx.ObjectValues(" + arg(0) + ")"
+			case "hasOwn":
+				return "gotsx.HasKey(" + arg(0) + ", " + arg(1) + ")"
 			}
 		}
 	}
-	g.fail(x.Pos, "Go 后端不支持 %s.%s", rt, name)
+	g.fail(x.Pos, "Go backend: %s.%s is not supported", rt, name)
 	return ""
 }
 
@@ -1150,15 +1481,41 @@ func (g *goGen) binary(x *Binary) string {
 	case "%":
 		return "gotsx.Mod(" + g.expr(x.L) + ", " + g.expr(x.R) + ")"
 	case "===", "==":
+		if z := g.zeroCheck(x); z != "" {
+			return z
+		}
 		return "(" + g.expr(x.L) + " == " + g.conv(x.R, x.L.T()) + ")"
 	case "!==", "!=":
+		if z := g.zeroCheck(x); z != "" {
+			return "!" + z
+		}
 		return "(" + g.expr(x.L) + " != " + g.conv(x.R, x.L.T()) + ")"
 	default:
 		return "(" + g.expr(x.L) + " " + x.Op + " " + g.expr(x.R) + ")"
 	}
 }
 
+// zeroCheck: obj === undefined / null 对复合类型比较零值(结构体含切片时 == 不能编译)
+func (g *goGen) zeroCheck(x *Binary) string {
+	other := x.L
+	if _, ok := x.L.(*NullLit); ok {
+		other = x.R
+	} else if _, ok := x.R.(*NullLit); !ok {
+		return ""
+	}
+	switch unopt(other.T()).(type) {
+	case *ObjT, *ArrT, *MapT, *FnT:
+		return "gotsx.IsZero(" + g.expr(other) + ")"
+	}
+	return ""
+}
+
 func (g *goGen) truthyOf(t Type, v string) string {
+	if o, ok := t.(*OptT); ok {
+		if _, isObj := o.Elem.(*ObjT); isObj {
+			return "gotsx.NonZero(" + v + ")"
+		}
+	}
 	switch unopt(t) {
 	case TString:
 		return v + ` != ""`
@@ -1173,7 +1530,7 @@ func (g *goGen) truthyOf(t Type, v string) string {
 func (g *goGen) arrow(x *Arrow) string {
 	ft, _ := x.T().(*FnT)
 	if ft == nil {
-		g.fail(x.Pos, "箭头函数类型未知")
+		g.fail(x.Pos, "arrow function type is unknown")
 	}
 	var ps []string
 	for i, p := range x.Params {
@@ -1275,7 +1632,7 @@ func (g *goGen) toNode(e Expr, reactive bool) string {
 		}
 		return "gotsx.Text(gotsx.JoinAny(" + g.expr(e) + `, ""))`
 	}
-	g.fail(e.GetPos(), "不能把 %s 当作 JSX 子节点", t)
+	g.fail(e.GetPos(), "cannot use %s as a JSX child", t)
 	return ""
 }
 
@@ -1294,6 +1651,23 @@ func (g *goGen) children(kids []Expr) string {
 }
 
 func (g *goGen) jsxElem(x *JSXElem) string {
+	if x.Comp != nil && x.Comp.Go == "gotsx.Suspense" {
+		// 边界: fallback 立即求值进外壳, children 包进 thunk —— 里面的宿主调用在外壳发出后才跑
+		fb := "nil"
+		for _, a := range x.Attrs {
+			if a.Name == "fallback" && a.Val != nil {
+				fb = g.toNode(a.Val, false)
+			}
+		}
+		kids := g.children(x.Children)
+		if strings.Contains(kids, ", ") {
+			kids = "gotsx.Frag(" + kids + ")"
+		}
+		if kids == "" {
+			kids = "nil"
+		}
+		return "gotsx.Suspense(" + fb + ", func() gotsx.Node { return " + kids + " })"
+	}
 	if x.Comp != nil {
 		comp := x.Comp.Comp
 		var fs []string
@@ -1420,6 +1794,8 @@ func walkExpr(e Expr, f func(Expr) bool) {
 	case *Assign:
 		walkExpr(x.Target, f)
 		walkExpr(x.Val, f)
+	case *Update:
+		walkExpr(x.X, f)
 	case *AsExpr:
 		walkExpr(x.X, f)
 	case *AwaitExpr:

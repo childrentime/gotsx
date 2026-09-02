@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"gotsx/admin/host"
-	gotsx "gotsx/runtime"
+	"github.com/childrentime/gotsx/admin/host"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 func main() {

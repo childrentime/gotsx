@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode"
 
-	gotsx "gotsx/runtime"
+	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
 type Token struct {
@@ -161,7 +161,7 @@ type SiteModule struct{}
 
 func (SiteModule) GoVersion() string { return runtime.Version() }
 func (SiteModule) Now() string       { return time.Now().Format("2006-01-02 15:04:05") }
-func (SiteModule) Version() string   { return "0.2 PoC" }
+func (SiteModule) Version() string   { return "v0.6" }
 
 var (
 	Hl   = HlModule{}

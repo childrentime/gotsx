@@ -1,20 +1,21 @@
-# gotsx —— TSX 方言 → Go 原生的全栈框架
+# gotsx — a TSX dialect that compiles to native Go
 APPS := example site shop admin
 
-.PHONY: help gen build test test-fast lint dev-% tailwind clean fmt
+.PHONY: help gen build test test-fast check lint fmt tailwind dev-% clean
 
 help:
-	@echo "gotsx make 目标:"
-	@echo "  make tailwind   下载 Tailwind standalone 二进制到 .tools/"
-	@echo "  make gen        编译所有示例应用的方言 → gen/ (含 hostgen + tailwind)"
+	@echo "gotsx make targets:"
+	@echo "  make tailwind   download the Tailwind standalone binary into .tools/ (no Node)"
+	@echo "  make gen        compile every demo app's dialect → gen/ (hostgen + tailwind + compiler)"
 	@echo "  make build      gen + go build ./..."
-	@echo "  make test       gen + go test ./...   (gen 必须先于 test: gen/ 是 gitignore 的)"
-	@echo "  make test-fast  只跑编译器/运行时单元测试(不构建应用)"
+	@echo "  make test       gen + go test ./...   (gen must run first: gen/ is gitignored)"
+	@echo "  make test-fast  compiler / runtime / cli unit tests only (no app builds)"
+	@echo "  make check      type-check every demo app (what the editor LSP runs)"
 	@echo "  make lint       go vet"
-	@echo "  make dev-shop   起 shop 开发服务器(dev-example / dev-site 同理)"
-	@echo "  make clean      删除生成产物"
+	@echo "  make dev-shop   run the shop dev server (dev-example / dev-site / dev-admin likewise)"
+	@echo "  make clean      remove generated output"
 
-# gen 必须先于任何编译应用的命令: gen/ 是 gitignore 的, 干净检出里不存在
+# gen must precede anything that compiles an app: gen/ is gitignored and absent in a clean checkout
 gen:
 	@for a in $(APPS); do echo ">> gotsx build $$a"; go run ./cmd/gotsx build $$a || exit 1; done
 
@@ -25,13 +26,19 @@ test: gen
 	go test ./...
 
 test-fast:
-	go test ./compiler/... ./runtime/...
+	go test -short ./compiler/... ./runtime/... ./cmd/...
+
+check:
+	@for a in $(APPS); do echo ">> gotsx check $$a"; go run ./cmd/gotsx check $$a || exit 1; done
 
 lint:
 	go vet ./compiler/... ./runtime/... ./cmd/... ./client/...
 
 fmt:
 	gofmt -w compiler runtime cmd client $(APPS)
+
+tailwind:
+	go run ./cmd/gotsx tailwind
 
 dev-%:
 	go run ./cmd/gotsx dev $* -addr :3000

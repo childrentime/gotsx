@@ -1,0 +1,29 @@
+{
+  "name": "gotsx",
+  "displayName": "gotsx",
+  "description": "Diagnostics for the gotsx dialect (TSX compiled to native Go) via `gotsx lsp`.",
+  "version": "0.5.0",
+  "publisher": "childrentime",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/childrentime/gotsx" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Linters"],
+  "activationEvents": [
+    "workspaceContains:**/gotsx.json",
+    "workspaceContains:**/app/pages/**/*.server.tsx"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "gotsx",
+      "properties": {
+        "gotsx.path": {
+          "type": "string",
+          "default": "gotsx",
+          "description": "Path to the gotsx binary (go install github.com/childrentime/gotsx/cmd/gotsx@latest)."
+        }
+      }
+    }
+  },
+  "dependencies": { "vscode-languageclient": "^9.0.1" }
+}

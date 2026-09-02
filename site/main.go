@@ -7,8 +7,8 @@ import (
 	"io/fs"
 	"log"
 
-	gotsx "gotsx/runtime"
-	"gotsx/site/gen"
+	gotsx "github.com/childrentime/gotsx/runtime"
+	"github.com/childrentime/gotsx/site/gen"
 )
 
 //go:embed public

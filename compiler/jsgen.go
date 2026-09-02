@@ -87,7 +87,7 @@ func GenJS(c *Checker, m *Module) (src string, err error) {
 			}
 			g.line("%sconst %s = %s;", prefix, d.Pat.Name, g.expr(d.Init))
 		default:
-			g.fail(Pos{}, "JS 后端不支持模块级 %T", s)
+			g.fail(Pos{}, "JS backend: unsupported module-level %T", s)
 		}
 	}
 	return g.b.String(), nil
@@ -225,6 +225,51 @@ func (g *jsGen) stmt(s Stmt) {
 		g.line("for (const %s of %s) {", g.pattern(d.Pat), g.expr(d.Iter))
 		g.block(d.Body)
 		g.line("}")
+	case *WhileStmt:
+		g.line("while (%s) {", g.expr(d.Cond))
+		g.block(d.Body)
+		g.line("}")
+	case *ForStmt:
+		init, cond, post := "", "", ""
+		if d.Init != nil {
+			switch i := d.Init.(type) {
+			case *VarDecl:
+				init = "let " + g.pattern(i.Pat)
+				if i.Init != nil {
+					init += " = " + g.expr(i.Init)
+				}
+			case *ExprStmt:
+				init = g.expr(i.X)
+			}
+		}
+		if d.Cond != nil {
+			cond = g.expr(d.Cond)
+		}
+		if d.Update != nil {
+			post = g.expr(d.Update)
+		}
+		g.line("for (%s; %s; %s) {", init, cond, post)
+		g.block(d.Body)
+		g.line("}")
+	case *BreakStmt:
+		g.line("break;")
+	case *ContinueStmt:
+		g.line("continue;")
+	case *SwitchStmt:
+		g.line("switch (%s) {", g.expr(d.Disc))
+		g.ind++
+		for _, cs := range d.Cases {
+			if cs.Test == nil {
+				g.line("default:")
+			} else {
+				g.line("case %s:", g.expr(cs.Test))
+			}
+			g.ind++
+			g.stmts(cs.Body)
+			g.ind--
+		}
+		g.ind--
+		g.line("}")
 	case *ExprStmt:
 		if call, ok := d.X.(*Call); ok && call.Kind == "hook:useEffect" {
 			g.line("G.effect(%s);", g.expr(call.Args[0]))
@@ -261,7 +306,7 @@ func (g *jsGen) stmt(s Stmt) {
 		g.funcDecl(d, false)
 	case *InterfaceDecl, *TypeAlias, *EmptyStmt:
 	default:
-		g.fail(Pos{}, "JS 后端不支持语句 %T", s)
+		g.fail(Pos{}, "JS backend: unsupported statement %T", s)
 	}
 }
 
@@ -289,11 +334,15 @@ func (g *jsGen) expr(e Expr) string {
 				return "G.fmtDate"
 			case "lpath":
 				return "G.lpath"
+			case "isoDate":
+				return "G.isoDate"
 			}
 		}
 		return x.Name
 	case *NumLit:
 		return x.Raw
+	case *RegexLit:
+		return "/" + x.Pattern + "/" + x.Flags
 	case *StrLit:
 		return jsQuote(x.Val)
 	case *BoolLit:
@@ -331,12 +380,9 @@ func (g *jsGen) expr(e Expr) string {
 		}
 		return "{ " + strings.Join(ps, ", ") + " }"
 	case *Member:
-		if x.Optional {
-			return g.expr(x.X) + "?." + x.Name
-		}
-		return g.expr(x.X) + "." + x.Name
+		return g.mapRead(g.lval(x), x)
 	case *Index:
-		return g.expr(x.X) + "[" + g.expr(x.I) + "]"
+		return g.mapRead(g.lval(x), x)
 	case *Call:
 		if x.Kind == "hook:useMemo" {
 			return "G.memo(" + g.expr(x.Args[0]) + ")"
@@ -354,12 +400,26 @@ func (g *jsGen) expr(e Expr) string {
 		}
 		return callee + "(" + strings.Join(args, ", ") + ")"
 	case *Unary:
-		if x.Op == "typeof" {
-			return "typeof " + g.expr(x.X)
+		if x.Op == "typeof" || x.Op == "delete" {
+			return x.Op + " " + g.lval(x.X)
 		}
 		return x.Op + g.expr(x.X)
 	case *Binary:
-		return "(" + g.expr(x.L) + " " + x.Op + " " + g.expr(x.R) + ")"
+		op := x.Op
+		if op == "??" { // 与 Go 后端一致: 原始类型用零值表示缺席, ?? 与 || 同义
+			if t := unopt(x.T()); t == TString || t == TNumber || t == TBool {
+				op = "||"
+			}
+		}
+		if (op == "===" || op == "!==") && g.nullCmp(x) != "" {
+			return g.nullCmp(x)
+		}
+		return "(" + g.expr(x.L) + " " + op + " " + g.expr(x.R) + ")"
+	case *Update:
+		if x.Prefix {
+			return x.Op + g.lval(x.X)
+		}
+		return g.lval(x.X) + x.Op
 	case *CondExpr:
 		return "(" + g.expr(x.Test) + " ? " + g.expr(x.Then) + " : " + g.expr(x.Else) + ")"
 	case *Arrow:
@@ -382,7 +442,7 @@ func (g *jsGen) expr(e Expr) string {
 		b.WriteString(strings.Repeat("  ", g.ind) + "}")
 		return b.String()
 	case *Assign:
-		return g.expr(x.Target) + " " + x.Op + " " + g.expr(x.Val)
+		return g.lval(x.Target) + " " + x.Op + " " + g.expr(x.Val)
 	case *AsExpr:
 		return g.expr(x.X)
 	case *AwaitExpr:
@@ -402,8 +462,94 @@ func (g *jsGen) expr(e Expr) string {
 	case *JSXExprChild:
 		return g.child(x)
 	}
-	g.fail(e.GetPos(), "JS 后端不支持表达式 %T", e)
+	g.fail(e.GetPos(), "JS backend: unsupported expression %T", e)
 	return ""
+}
+
+// lval: 成员 / 下标的原始形式(赋值目标、delete、++ 用), 不做 Record 零值补齐
+func (g *jsGen) lval(e Expr) string {
+	switch x := e.(type) {
+	case *Member:
+		if x.Optional {
+			return g.expr(x.X) + "?." + x.Name
+		}
+		return g.expr(x.X) + "." + x.Name
+	case *Index:
+		return g.expr(x.X) + "[" + g.expr(x.I) + "]"
+	case *Paren:
+		return "(" + g.lval(x.X) + ")"
+	}
+	return g.expr(e)
+}
+
+// zeroJS: 原始类型的零值字面量; 其它类型返回 ""
+func zeroJS(t Type) string {
+	switch unopt(t) {
+	case TString:
+		return `""`
+	case TNumber:
+		return "0"
+	case TBool:
+		return "false"
+	}
+	return ""
+}
+
+// mapRead: 读 Record 的键 —— 与 Go 的 map 一致, 缺席的键给值类型的零值(m.k ?? ""), 用 Object.hasOwn 判断存在
+func (g *jsGen) mapRead(raw string, e Expr) string {
+	var recv Expr
+	switch x := e.(type) {
+	case *Member:
+		if !x.MapKey {
+			return raw
+		}
+		recv = x.X
+	case *Index:
+		recv = x.X
+	}
+	if _, ok := unopt(recv.T()).(*MapT); !ok {
+		return raw
+	}
+	if z := zeroJS(e.T()); z != "" {
+		return "(" + raw + " ?? " + z + ")"
+	}
+	return raw
+}
+
+// nullCmp: x === undefined / null 对原始类型比较零值(两端一致: 缺席 = 零值); 非原始类型返回 ""
+func (g *jsGen) nullCmp(x *Binary) string {
+	other := x.L
+	if _, ok := x.L.(*NullLit); ok {
+		other = x.R
+	} else if _, ok := x.R.(*NullLit); !ok {
+		return ""
+	}
+	z := zeroJS(other.T())
+	if z == "" {
+		return ""
+	}
+	op := "==="
+	if x.Op == "!==" {
+		op = "!=="
+	}
+	inner := g.expr(other)
+	if !isMapRead(other) { // Record 读取已经补过零值
+		inner = "(" + inner + " ?? " + z + ")"
+	}
+	return "(" + inner + " " + op + " " + z + ")"
+}
+
+func isMapRead(e Expr) bool {
+	switch x := e.(type) {
+	case *Paren:
+		return isMapRead(x.X)
+	case *Member:
+		return x.MapKey
+	case *Index:
+		_, ok := unopt(x.X.T()).(*MapT)
+		return ok
+	}
+	return false
 }
 
 // builtinJS: 少数方法要和 Go 后端逐字节一致(copy 而非原地改、越界零值、map 键排序), 走运行时 G.*
@@ -419,6 +565,12 @@ func (g *jsGen) builtinJS(x *Call) string {
 		return "undefined"
 	}
 	recv := func() string { return g.expr(m.X) }
+	switch strings.TrimPrefix(x.Kind, "builtin:") {
+	case "re_match":
+		return "G.match(" + recv() + ", " + a(0) + ")"
+	case "re_replaceAll":
+		return recv() + ".replace(" + a(0) + ", " + a(1) + ")" // g 标志已由 checker 保证
+	}
 	switch m.Builtin {
 	case "sort":
 		return "G.sort(" + recv() + ", " + a(0) + ")"
@@ -426,6 +578,8 @@ func (g *jsGen) builtinJS(x *Call) string {
 		return "G.at(" + recv() + ", " + a(0) + ")"
 	case "reverse":
 		return "G.reverse(" + recv() + ")"
+	case "localeCompare":
+		return "G.cmp(" + recv() + ", " + a(0) + ")"
 	}
 	// Object.keys / Object.values: 排序键, 与 Go map 一致
 	if id, ok := m.X.(*Ident); ok && id.Name == "Object" {
@@ -552,7 +706,7 @@ func (g *jsGen) nodeExpr(e Expr, reactive bool) string {
 		}
 	case *Call:
 		if m, ok := y.Fn.(*Member); ok && m.Builtin == "map" && y.Reactive {
-			return "G.each(() => " + g.expr(m.X) + ", " + g.expr(y.Args[0]) + ")"
+			return "G.each(() => " + g.expr(m.X) + ", " + g.expr(y.Args[0]) + g.keyFn(y.Args[0]) + ")"
 		}
 	}
 	switch tt := t.(type) {
@@ -577,7 +731,39 @@ func (g *jsGen) nodeExpr(e Expr, reactive bool) string {
 		}
 		return "G.t(" + g.expr(e) + `.join(""))`
 	}
-	g.fail(e.GetPos(), "JS 后端: 不能把 %s 当作 JSX 子节点", t)
+	g.fail(e.GetPos(), "JS backend: cannot use %s as a JSX child", t)
+	return ""
+}
+
+// keyFn: list.map((x) => <li key={x.id}>…</li>) 的 key 表达式 → ", (x) => x.id"; 没有 key 返回 ""
+// 有 key 的列表在客户端按 key 复用/移动 DOM(输入框状态不丢), 没有 key 的整块重建。
+func (g *jsGen) keyFn(cb Expr) string {
+	a, ok := cb.(*Arrow)
+	if !ok {
+		return ""
+	}
+	var root Expr = a.ExprBody
+	if root == nil && a.Body != nil && len(a.Body.Stmts) > 0 {
+		if r, ok := a.Body.Stmts[len(a.Body.Stmts)-1].(*ReturnStmt); ok {
+			root = r.X
+		}
+	}
+	for {
+		p, ok := root.(*Paren)
+		if !ok {
+			break
+		}
+		root = p.X
+	}
+	el, ok := root.(*JSXElem)
+	if !ok {
+		return ""
+	}
+	for _, at := range el.Attrs {
+		if at.Name == "key" && at.Val != nil {
+			return ", (" + g.params(a.Params) + ") => " + g.expr(at.Val)
+		}
+	}
 	return ""
 }
 
