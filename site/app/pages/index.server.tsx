@@ -46,10 +46,10 @@ export default function Home({ query, locale, path }: PageProps) {
       {/* numbers */}
       <section class="border-y border-border bg-muted/30">
         <div class="container-page grid gap-4 py-10 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat value="30 µs" label={loc(lc, "list page SSR (the goja version was 50 ms)", "列表页服务端渲染(goja 版是 50 ms)")} />
-          <Stat value="28k req/s" label={loc(lc, "ab -c 64, single process, p99 6 ms", "ab -c 64, 单进程, p99 6 ms")} />
-          <Stat value="6 KB" label={loc(lc, "client runtime (uncompressed)", "客户端运行时(未压缩)")} />
-          <Stat value="1.8 s" label={loc(lc, "edit TSX to a new version live", "改 TSX 到新版本上线")} />
+          <Stat value="15 µs" label={loc(lc, "50-item list page rendered in Go (in-process)", "50 件商品的列表页在 Go 里渲染完(进程内)")} />
+          <Stat value="13k req/s" label={loc(lc, "4-vCPU GitHub runner, 64 connections — same as templ, 50× Next.js", "4 vCPU 的 GitHub runner, 64 连接 —— 与 templ 持平, Next.js 的 50 倍")} />
+          <Stat value="22 MB" label={loc(lc, "peak memory under load (Next.js: 377 MB)", "负载下的峰值内存(Next.js: 377 MB)")} />
+          <Stat value="6 KB" label={loc(lc, "client runtime, gzipped (the morph library loads lazily)", "客户端运行时, gzip 后(morph 库懒加载)")} />
         </div>
       </section>
 

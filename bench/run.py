@@ -154,7 +154,17 @@ def main():
         results.append(run_one(n, CONTENDERS[n], port, a.conc, a.duration, a.single_core, not a.no_client)); port += 1
         print("  ", {k: v for k, v in results[-1].items() if k in ("rps", "p50_ms", "p99_ms", "peak_rss_mb", "cold_start_ms", "js_bytes", "error")}, flush=True)
     os.makedirs("results", exist_ok=True)
-    meta = dict(machine=platform.machine(), system=platform.platform(), cpu=subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip() if sys.platform == "darwin" else "",
+    def cpu_name():
+        if sys.platform == "darwin":
+            return subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip()
+        try:
+            for ln in open("/proc/cpuinfo"):
+                if ln.startswith("model name"):
+                    return ln.split(":", 1)[1].strip() + f" ({os.cpu_count()} vCPU)"
+        except OSError:
+            pass
+        return platform.processor()
+    meta = dict(machine=platform.machine(), system=platform.platform(), cpu=cpu_name(),
                 go=subprocess.run(["go", "version"], capture_output=True, text=True).stdout.strip(), node=subprocess.run(["node", "-v"], capture_output=True, text=True).stdout.strip(),
                 bun=subprocess.run(["bun", "-v"], capture_output=True, text=True).stdout.strip(), conc=a.conc, duration=a.duration, single_core=a.single_core, date=time.strftime("%Y-%m-%d"))
     suffix = "-1core" if a.single_core else ""

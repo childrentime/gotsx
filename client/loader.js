@@ -1,6 +1,8 @@
 /* gotsx 岛加载器 + SPA 跳转。页面本身零 JS; 岛按需 import(); 跳转 = 拉 HTML → idiomorph → 岛按 DOM 同一性存活 */
 import { mount } from "./runtime.js";
-import { Idiomorph } from "./idiomorph.esm.js";
+/* idiomorph(~11 KB gz)只在第一次 SPA 跳转时才需要: 懒加载, 首屏 JS 只有 runtime + loader; 悬停预取时提前拉 */
+let morphMod = null;
+const loadMorph = () => morphMod || (morphMod = import("./idiomorph.esm.js").then((m) => m.Idiomorph));
 
 const manifest = () => (window.__GOTSX && window.__GOTSX.islands) || {};
 
@@ -104,6 +106,7 @@ document.addEventListener("pointerover", (e) => {
   const a = e.target.closest && e.target.closest("a[href]");
   if (!prefetchable(a)) return;
   clearTimeout(hoverTimer);
+  loadMorph();
   hoverTimer = setTimeout(() => prefetch(a.dataset.raw ? a.href : localize(a.href)), 60);   // 悬停 60ms 才预取
 });
 document.addEventListener("pointerout", () => clearTimeout(hoverTimer));
@@ -118,6 +121,7 @@ async function navigate(url, push = true) {
   if (navAbort) navAbort.abort();
   navAbort = new AbortController();
   barStart();
+  const morphReady = loadMorph();
   let html;
   const cached = prefetchCache.get(url);
   try {
@@ -132,6 +136,9 @@ async function navigate(url, push = true) {
       html = await res.text();
     }
   } catch (e) { if (e.name !== "AbortError") { barDone(); location.href = url; } return; }
+  if (seq !== navSeq) return;
+  let Idiomorph;
+  try { Idiomorph = await morphReady; } catch { barDone(); location.href = url; return; }
   if (seq !== navSeq) return;
   barDone();
   const doc = new DOMParser().parseFromString(html, "text/html");

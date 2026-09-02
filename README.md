@@ -56,7 +56,7 @@ export default function Counter({ start }: { start: number }) {
 
 ## Why
 
-**The core insight: SSR is a single, synchronous, one-pass evaluation.** No re-renders, no effects, setters are never called. So the server doesn't need a React runtime — only the component's "render slice," whose semantics are small enough to compile straight to Go. The result: a list page renders on the server in **~30µs** (a goja + React + MUI version takes ~50ms), the client runtime is **~6KB gzipped** (plus a ~4KB loader), `go build` produces a single binary, and `delve` / `pprof` / `go test` all just work.
+**The core insight: SSR is a single, synchronous, one-pass evaluation.** No re-renders, no effects, setters are never called. So the server doesn't need a React runtime — only the component's "render slice," whose semantics are small enough to compile straight to Go. The result: a 50-item list page renders in **~15 µs** of Go (straight-line writes, ~140 allocations), a 4-vCPU GitHub runner serves it at **13k req/s** — the same as templ, 3.5× `html/template`, 50× Next.js — at **22 MB RSS** with a **22 ms cold start**; the client runtime is **~6 KB gzipped** (plus a 4 KB loader; the morphing library for SPA navigation loads lazily), `go build` produces a single binary, and `delve` / `pprof` / `go test` all just work. Numbers and method: [`bench/`](bench/README.md).
 
 ## Quick start
 
@@ -163,8 +163,18 @@ Live docs site (a static export of the `site` app): **https://childrentime.githu
 and measures throughput, latency, memory, cold start, build time, artifact size and the JS a browser downloads — with a
 dependency-free Go load generator, on a GitHub-hosted runner (the **Benchmark** workflow commits `bench/results/`).
 gotsx compiles a page to straight-line Go writes (static HTML merged at compile time, `map` → `for`), so the page
-costs ~15 µs and ~140 allocations in-process and the server runs at templ's speed; see [`bench/README.md`](bench/README.md)
-for the tables and an honest comparison of what each stack is good at.
+costs ~15 µs and ~140 allocations in-process. On the runner (AMD EPYC, 4 vCPU, 64 connections):
+
+| | gotsx | templ | html/template | Gin | Hono (Bun) | Astro 7 | Next.js 16 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| req/s | **13,062** | 13,498 | 3,837 | 3,490 | 3,025 | 1,471 | 253 |
+| p50 | 2.7 ms | 4.0 ms | 9.7 ms | 10.9 ms | 20.4 ms | 42.3 ms | 251.7 ms |
+| peak RSS | 22 MB | 19 MB | 20 MB | 28 MB | 75 MB | 222 MB | 377 MB |
+| cold start | 22 ms | 11 ms | 11 ms | 12 ms | 27 ms | 195 ms | 696 ms |
+| req/s on 1 core | **7,267** | 5,037 | 1,670 | 1,612 | 3,086 | 1,437 | 257 |
+
+See [`bench/README.md`](bench/README.md) for the full tables (build time, artifact size, HTML/JS bytes) and an honest
+comparison of what each stack is good at.
 
 ## Testing
 

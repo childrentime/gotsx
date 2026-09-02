@@ -56,7 +56,7 @@ export default function Counter({ start }: { start: number }) {
 
 ## 为什么
 
-**核心洞察: SSR 是一次同步的、单趟的求值。** 没有重渲染、没有 effect、setter 永远不会被调用。所以服务端不需要 React 运行时 —— 只需要组件的"渲染切片", 它的语义小到可以直接编译成 Go。结果: 一个列表页在服务端 **~30µs** 渲染完(goja + React + MUI 版本要 ~50ms), 客户端运行时 **gzip 后 ~6KB**(外加 ~4KB 的加载器), `go build` 出单个二进制, `delve` / `pprof` / `go test` 全能用。
+**核心洞察: SSR 是一次同步的、单趟的求值。** 没有重渲染、没有 effect、setter 永远不会被调用。所以服务端不需要 React 运行时 —— 只需要组件的"渲染切片", 它的语义小到可以直接编译成 Go。结果: 50 件商品的列表页在 Go 里 **~15 µs** 渲染完(直线式写入, ~140 次分配), 4 vCPU 的 GitHub runner 上 **13k req/s** —— 与 templ 持平, 是 `html/template` 的 3.5 倍、Next.js 的 50 倍 —— 峰值 **22 MB 内存**、**22 ms 冷启动**; 客户端运行时 **gzip 后 ~6KB**(外加 4KB 加载器; SPA 跳转用的 morph 库按需懒加载), `go build` 出单个二进制, `delve` / `pprof` / `go test` 全能用。数据与方法: [`bench/`](bench/README.md)。
 
 ## 快速开始
 
@@ -159,7 +159,17 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 
 ## 基准测试
 
-`bench/` 把同一个 50 件商品的页面在 **gotsx、Go html/template、Gin、templ、Next.js 16、Astro 7、Hono(Bun)** 上各实现一遍, 用零依赖的 Go 压测器统一测吞吐、延迟、内存、冷启动、构建时间、产物体积和浏览器下载的 JS 体积, 在 GitHub 托管的 runner 上跑(**Benchmark** 工作流把结果提交到 `bench/results/`)。gotsx 把页面编译成直线式的 Go 写入(静态 HTML 编译期合并, `map` → `for`), 一页约 15 µs / 140 次分配, 服务端吞吐与 templ 同级; 表格与各框架优劣的对比见 [`bench/README.md`](bench/README.md)。
+`bench/` 把同一个 50 件商品的页面在 **gotsx、Go html/template、Gin、templ、Next.js 16、Astro 7、Hono(Bun)** 上各实现一遍, 用零依赖的 Go 压测器统一测吞吐、延迟、内存、冷启动、构建时间、产物体积和浏览器下载的 JS 体积, 在 GitHub 托管的 runner 上跑(**Benchmark** 工作流把结果提交到 `bench/results/`)。gotsx 把页面编译成直线式的 Go 写入(静态 HTML 编译期合并, `map` → `for`), 一页约 15 µs / 140 次分配。runner(AMD EPYC, 4 vCPU, 64 连接)上:
+
+| | gotsx | templ | html/template | Gin | Hono (Bun) | Astro 7 | Next.js 16 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| req/s | **13,062** | 13,498 | 3,837 | 3,490 | 3,025 | 1,471 | 253 |
+| p50 | 2.7 ms | 4.0 ms | 9.7 ms | 10.9 ms | 20.4 ms | 42.3 ms | 251.7 ms |
+| 峰值内存 | 22 MB | 19 MB | 20 MB | 28 MB | 75 MB | 222 MB | 377 MB |
+| 冷启动 | 22 ms | 11 ms | 11 ms | 12 ms | 27 ms | 195 ms | 696 ms |
+| 单核 req/s | **7,267** | 5,037 | 1,670 | 1,612 | 3,086 | 1,437 | 257 |
+
+完整表格(构建时间、产物体积、HTML/JS 字节)与各框架优劣的对比见 [`bench/README.md`](bench/README.md)。
 
 ## 测试
 
