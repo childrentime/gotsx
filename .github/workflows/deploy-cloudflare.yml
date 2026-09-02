@@ -1,0 +1,31 @@
+name: Deploy shop to Cloudflare Workers
+# Builds the shop demo as a Go→Wasm Worker (deploy/cloudflare) and publishes it with wrangler.
+# Needs two repository secrets: CLOUDFLARE_API_TOKEN (Workers Scripts: Edit) and CLOUDFLARE_ACCOUNT_ID.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["shop/**", "deploy/cloudflare/**", "runtime/**", "client/**", "compiler/**"]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ vars.CLOUDFLARE_DEPLOY == 'true' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the Worker (gotsx build → Tailwind → Go → Wasm)
+        run: |
+          go run ./cmd/gotsx tailwind
+          make -C deploy/cloudflare build
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: deploy/cloudflare
+          command: deploy

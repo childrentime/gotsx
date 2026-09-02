@@ -140,7 +140,7 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 ## 生产可用
 
 - **HTTP 加固**: panic 恢复、安全响应头、**CSP + 每响应 nonce**、gzip、**CSRF 同源校验**、内容哈希 immutable 缓存、请求 ID、访问日志、优雅关闭、`/healthz` `/readyz`、自定义 404/500、应用级中间件(鉴权)。
-- **单二进制部署**: `go:embed` 打包客户端与静态资源, `go build` 出一个 `scp` 即跑的二进制。
+- **单二进制部署**: `go:embed` 打包客户端与静态资源, `go build` 出一个 `scp` 即跑的二进制; 仓库里还有 `Dockerfile`、`fly.toml`、`render.yaml` 和 **Cloudflare Workers** 构建(Go → Wasm, 走 `gotsx.Handler`), 见 [`docs/deploy.md`](docs/deploy.md)。
 - **客户端韧性**: 响应式所有者/清理、按范围重建的块、岛错误边界(一个岛坏了不白屏)。
 - **C 端能力**: 每页 SEO(canonical / OpenGraph / Twitter / JSON-LD / sitemap / robots)、懒加载图片、悬停预取、客户端遥测、PWA manifest。
 - **国际化**(可选): `t()` / `tv()` / `plural()` / `fmtNum` / `fmtCur` / `fmtDate` 两端一致; URL 前缀或 cookie/Accept-Language 解析语言; 自动 `hreflang`; 内链自动本地化。

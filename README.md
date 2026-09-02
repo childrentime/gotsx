@@ -140,7 +140,7 @@ The full, searchable syntax table lives in the `site` docs at `/docs/language`.
 ## Production-ready
 
 - **HTTP hardening**: panic recovery, security headers, **CSP + per-response nonce**, gzip, **CSRF same-origin check**, content-hash immutable caching, request IDs, access logging, graceful shutdown, `/healthz` `/readyz`, custom 404/500, application-level middleware (auth).
-- **Single-binary deploy**: `go:embed` bundles the client and static assets, so `go build` produces one self-contained binary you can `scp` and run.
+- **Single-binary deploy**: `go:embed` bundles the client and static assets, so `go build` produces one self-contained binary you can `scp` and run; `Dockerfile`, `fly.toml`, `render.yaml` and a **Cloudflare Workers** build (Go → Wasm via `gotsx.Handler`) are in the repo — see [`docs/deploy.md`](docs/deploy.md).
 - **Client resilience**: reactive ownership/cleanup, range-based block rebuilds, island error boundaries (one failing island doesn't blank the page).
 - **Consumer-facing**: per-page SEO (canonical / OpenGraph / Twitter / JSON-LD / sitemap / robots), lazy images, hover prefetch, client telemetry, PWA manifest.
 - **Internationalization** (optional): `t()` / `tv()` / `plural()` / `fmtNum` / `fmtCur` / `fmtDate` identical on server and client; URL-prefix or cookie/Accept-Language locale resolution; automatic `hreflang`; localized internal links.

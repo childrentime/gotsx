@@ -26,7 +26,25 @@ docker run --rm -p 3000:3000 gotsx-shop
 
 For your own app, copy the `Dockerfile` and change `APP` to `.`.
 
-## Fly.io (used for the hosted shop demo)
+## Cloudflare Workers (Go → Wasm, no container)
+
+`deploy/cloudflare/` runs the shop demo as a Worker: `gotsx.Handler(server.Options(...))` handed to
+[`syumai/workers`](https://github.com/syumai/workers) and compiled with `GOOS=js GOARCH=wasm` (~8 MB Wasm,
+~2.3 MB compressed — under the free plan's 3 MB).
+
+```bash
+cd deploy/cloudflare
+npx wrangler login      # once
+make dev                # local workerd on :8787
+make deploy             # → gotsx-shop.<subdomain>.workers.dev
+```
+
+Or from GitHub: add the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets and run the
+"Deploy shop to Cloudflare Workers" workflow. Caveats: request memory is per isolate (use D1/KV for real state),
+`<Suspense>` streaming degrades to a buffered response, and the size limit rules out very large apps unless you use
+TinyGo. For your own app, copy the directory and point `main.go` at your app's options.
+
+## Fly.io
 
 ```bash
 fly launch --copy-config --no-deploy   # picks up fly.toml
