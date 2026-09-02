@@ -1,0 +1,40 @@
+package main
+
+import "fmt"
+
+func money(c int) string { return fmt.Sprintf("$%d.%02d", c/100, c%100) }
+
+templ Page(items []Product, css string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Bench · templ</title>
+			<style>{ css }</style>
+		</head>
+		<body>
+			<header><strong>bench · templ</strong><button id="c">count: <span id="n">0</span></button></header>
+			<main>
+				<h1>Products</h1>
+				<p class="muted">{ fmt.Sprint(len(items)) } products</p>
+				<div class="grid">
+					for _, p := range items {
+						<article class="card">
+							<h2>{ p.Title }</h2>
+							<p class="muted">{ p.Brand } · { p.Desc }</p>
+							<div class="row">
+								for _, t := range p.Tags {
+									<span class="chip">{ t }</span>
+								}
+								<span class="price">{ money(p.Price) }</span>
+							</div>
+						</article>
+					}
+				</div>
+			</main>
+			<footer class="muted">rendered by templ</footer>
+			<script>var n=0,el=document.getElementById('n');document.getElementById('c').onclick=function(){el.textContent=++n}</script>
+		</body>
+	</html>
+}

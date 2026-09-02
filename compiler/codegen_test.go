@@ -12,12 +12,12 @@ func TestServerCodegen(t *testing.T) {
 		body string // 放进组件函数体
 		want []string
 	}{
-		{"字符串加号", `return <b>{"a" + "b"}</b>;`, []string{`gotsx.El("b"`}},
-		{"数字转文本", `const n = 3; return <b>{n}</b>;`, []string{"var n float64 = 3", "gotsx.Text(gotsx.Num(n))"}},
+		{"字符串加号", `return <b>{"a" + "b"}</b>;`, []string{`_ctx.W("<b>")`, `_ctx.Esc(("a" + "b"))`}},
+		{"数字转文本", `const n = 3; return <b>{n}</b>;`, []string{"var n float64 = 3", "_ctx.Esc(gotsx.Num(n))"}},
 		{"模板字符串", "const s = `hi ${1}`; return <b>{s}</b>;", []string{`"hi " + gotsx.Num(1)`}},
 		{"??空合并", `const q = ""; const r = q ?? "x"; return <b>{r}</b>;`, []string{"gotsx.Or("}},
 		{"三元", `const n = 1; return <b>{n > 0 ? "y" : "n"}</b>;`, []string{"if (n > 0)"}},
-		{"数组map", `const xs = [1, 2]; return <ul>{xs.map((x) => <li>{x}</li>)}</ul>;`, []string{"gotsx.Map(xs", "gotsx.El(\"li\""}},
+		{"数组map", `const xs = [1, 2]; return <ul>{xs.map((x) => <li>{x}</li>)}</ul>;`, []string{"for _, x := range xs {", `_ctx.W("<li>")`, `_ctx.W("<ul>")`}},
 		{"filter", `const xs = [1, 2]; const ys = xs.filter((x) => x > 1); return <b>{ys.length}</b>;`, []string{"gotsx.Filter(xs"}},
 		{"reduce", `const xs = [1, 2]; const s = xs.reduce((a, x) => a + x, 0); return <b>{s}</b>;`, []string{"gotsx.Reduce(xs"}},
 		{"sort", `const xs = [3, 1]; const ys = xs.sort((a, b) => a - b); return <b>{ys.length}</b>;`, []string{"gotsx.Sort(xs"}},
@@ -29,8 +29,10 @@ func TestServerCodegen(t *testing.T) {
 		{"if语句", `const n = 1; if (n > 0) { return <b>+</b>; } return <b>-</b>;`, []string{"if (n > 0)"}},
 		{"for-of", `const xs = [1]; for (const x of xs) { const y = x; } return <b>ok</b>;`, []string{"for _, x := range xs"}},
 		{"条件子节点标记", `const n = 1; return <div>{n > 0 && <b>!</b>}</div>;`, []string{"gotsx.IfPlain"}},
-		{"void元素", `return <input />;`, []string{`gotsx.El("input"`}},
-		{"属性", `return <a href="/x" class="c">go</a>;`, []string{`gotsx.A("href", "/x")`, `gotsx.A("class", "c")`}},
+		{"void元素", `return <input />;`, []string{`_ctx.W("<input>")`}},
+		{"静态属性合并成一段", `return <a href="/x" class="c">go</a>;`, []string{`_ctx.W("<a href=\"/x\" class=\"c\">go</a>")`}},
+		{"动态属性", `const c = "x"; return <a class={c} disabled={c !== ""}>go</a>;`, []string{`_ctx.Attr("class", c)`, `_ctx.W(" disabled")`}},
+		{"静态文本编译期转义", `return <b>{"<i>"}</b>;`, []string{`_ctx.W("<b>&lt;i&gt;</b>")`}},
 		{"宿主调用", `return <b>{models.list().length}</b>;`, []string{"host.Data.Models.List()"}},
 	}
 	for _, tc := range cases {
@@ -166,9 +168,9 @@ export default function C() { const [n, setN] = useState(0); const [xs, setXs] =
 	// 只有 Dyn / text 发 <!--$-->。所以按"块标记"和"文本标记"两类各自对齐即可。
 	for i, src := range snippets {
 		gs, js := compileOne(t, "C.client.tsx", src)
-		goText := count(gs, []string{"gotsx.Dyn("})
+		goText := count(gs, []string{".Dyn("})
 		jsText := count(js, []string{"G.text("})
-		goBlock := count(gs, []string{"gotsx.Nodes(", "gotsx.If(", "gotsx.Marked("})
+		goBlock := count(gs, []string{"gotsx.Nodes(", "_ctx.ListStart(", "gotsx.If(", "gotsx.Marked("})
 		jsBlock := count(js, []string{"G.each(", "G.cond("})
 		if goText != jsText || goBlock != jsBlock {
 			t.Errorf("片段 %d 标记不一致: 文本 %d/%d 块 %d/%d\n=== Go ===\n%s\n=== JS ===\n%s",

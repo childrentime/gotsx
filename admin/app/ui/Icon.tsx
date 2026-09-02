@@ -1,6 +1,6 @@
 import type { Node } from "gotsx";
 
-/** 16px 线性图标(lucide 风格路径), currentColor; 两端共用 */
+/** 16px line icons (lucide-style paths), currentColor; shared by both sides */
 function paths(name: string): Node {
   if (name === "dashboard") return <><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>;
   if (name === "users") return <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>;

@@ -7,6 +7,7 @@ import Countdown from "../islands/Countdown.client";
 import Feed from "../islands/Feed.client";
 
 export default function Home({ cookies, locale }: PageProps) {
+  const lc = locale !== "" ? locale : "en";
   const sid = cookies.sid ?? "";
   const deals = flashCards().slice(0, 10);
   const cats = categories();
@@ -17,21 +18,26 @@ export default function Home({ cookies, locale }: PageProps) {
     url: url("/"),
     potentialAction: { "@type": "SearchAction", target: url("/search?q={q}"), "query-input": "required name=q" },
   });
-  const perks = [["truck", "满 ¥69 包邮", "全国大部分地区"], ["zap", "24h 极速发货", "工厂直连"], ["undo", "7 天退换", "无理由"], ["shield", "90 天价保", "买贵退差"]];
+  const perks = [
+    ["truck", t(lc, "perk.ship.t"), t(lc, "perk.ship.d")],
+    ["zap", t(lc, "perk.fast.t"), t(lc, "perk.fast.d")],
+    ["undo", t(lc, "perk.return.t"), t(lc, "perk.return.d")],
+    ["shield", t(lc, "perk.price.t"), t(lc, "perk.price.d")],
+  ];
   return (
-    <Layout title="全球好物 · 工厂直发" sid={sid} locale={locale} active="home" wide path="/" ld={ld}>
+    <Layout title={t(lc, "home.title")} sid={sid} locale={lc} active="home" wide path="/" ld={ld}>
       {/* Hero */}
       <section class="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div class="card flex flex-col justify-center p-8 sm:p-10">
           <div>
-            <span class="badge badge-secondary">新人首单立减 ¥15</span>
-            <h1 class="mt-5 max-w-lg text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">像逛工厂一样,<br />把好物直接搬回家</h1>
-            <p class="mt-4 max-w-md text-sm leading-6 text-muted-foreground">20 万+ 精选好物 · 全场满 ¥69 包邮 · 7 天无理由退换 · 90 天价保</p>
+            <span class="badge badge-secondary">{t(lc, "home.badge")}</span>
+            <h1 class="mt-5 max-w-lg text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">{t(lc, "home.heading1")}<br />{t(lc, "home.heading2")}</h1>
+            <p class="mt-4 max-w-md text-sm leading-6 text-muted-foreground">{t(lc, "home.sub")}</p>
           </div>
           <div class="mt-8 flex flex-wrap items-center gap-3">
-            <a href={`/c/${cats[0].key}`} class="btn btn-primary">开始逛 <Icon name="arrow-right" /></a>
-            <a href="#deals" class="btn btn-outline">今日闪购</a>
-            <span class="ml-1 hidden text-xs text-muted-foreground sm:inline">满 ¥29 减 ¥5 · 满 ¥99 减 ¥20</span>
+            <a href={`/c/${cats[0].key}`} class="btn btn-primary">{t(lc, "home.cta")} <Icon name="arrow-right" /></a>
+            <a href="#deals" class="btn btn-outline">{t(lc, "home.deals")}</a>
+            <span class="ml-1 hidden text-xs text-muted-foreground sm:inline">{t(lc, "home.coupons")}</span>
           </div>
         </div>
         <div class="card grid grid-cols-4 gap-1 p-3 lg:grid-cols-2">
@@ -44,7 +50,7 @@ export default function Home({ cookies, locale }: PageProps) {
         </div>
       </section>
 
-      {/* 服务保障条 */}
+      {/* Service perks */}
       <div class="mt-4 grid grid-cols-2 divide-border rounded-lg border border-border bg-card sm:grid-cols-4 sm:divide-x">
         {perks.map((f) => (
           <div class="flex items-center gap-3 px-4 py-3">
@@ -54,14 +60,14 @@ export default function Home({ cookies, locale }: PageProps) {
         ))}
       </div>
 
-      {/* 限时闪购 */}
+      {/* Flash sale */}
       <section id="deals" class="card mt-8 overflow-hidden">
         <div class="flex items-center gap-3 border-b border-border px-5 py-3">
           <Icon name="zap" />
-          <span class="text-sm font-semibold">限时闪购</span>
-          <span class="badge badge-secondary">5 折起</span>
+          <span class="text-sm font-semibold">{t(lc, "flash.title")}</span>
+          <span class="badge badge-secondary">{t(lc, "flash.badge")}</span>
           <div class="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            <span>距结束</span><Countdown left0={flashLeftMs()} />
+            <span>{t(lc, "flash.ends")}</span><Countdown left0={flashLeftMs()} />
           </div>
         </div>
         <div class="no-scrollbar flex gap-4 overflow-x-auto p-5">
@@ -78,19 +84,19 @@ export default function Home({ cookies, locale }: PageProps) {
               <div class="mt-2 h-1 overflow-hidden rounded-full bg-muted">
                 <div class="h-full rounded-full bg-foreground" style={`width:${p.progress}%`}></div>
               </div>
-              <div class="mt-1 text-[11px] text-muted-foreground tabular-nums">已抢 {p.progress}%</div>
+              <div class="mt-1 text-[11px] text-muted-foreground tabular-nums">{tv(lc, "flash.claimed", { n: String(p.progress) })}</div>
             </a>
           ))}
         </div>
       </section>
 
-      {/* 为你推荐(信息流, 骨架加载) */}
+      {/* For you (feed with skeleton loading) */}
       <section class="mt-10">
         <div class="mb-4 flex items-baseline gap-3">
-          <h2 class="text-lg font-semibold tracking-tight">为你推荐</h2>
-          <span class="text-xs text-muted-foreground">根据你的浏览猜你喜欢</span>
+          <h2 class="text-lg font-semibold tracking-tight">{t(lc, "feed.title")}</h2>
+          <span class="text-xs text-muted-foreground">{t(lc, "feed.sub")}</span>
         </div>
-        <Feed />
+        <Feed locale={lc} />
       </section>
     </Layout>
   );

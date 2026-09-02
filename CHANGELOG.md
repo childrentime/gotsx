@@ -1,5 +1,24 @@
 # 更新日志
 
+## 0.6.1 — 流式代码生成(5× 吞吐)、基准测试、demo 英文优先
+
+### 性能
+- **Go 后端改为流式写入**(templ 的做法): 静态 HTML 在编译期合并成整段 `_ctx.W("…")`, 动态文本就地转义, `list.map((x) => <li/>)` 内联成 `for` 循环, 每个组件只剩一个闭包(之前每个元素一个)。50 件商品的列表页: 85 µs / 1860 次分配 → **15 µs / 141 次分配**(进程内), 真实 HTTP 负载下吞吐 11k → 30k req/s(M5, 64 连接), 与 templ 持平。
+- 文档一次性渲染: doctype 与引导脚本在 `</head>`(或 `</body>`)处直接写入, 不再做事后的字符串替换/拼接(少 4 次整页拷贝)。
+- 新 API: **`gotsx.Handler(opt) http.Handler`**(不启动服务器, 可挂进自己的 mux / 用 httptest 驱动)、`Options.QuietLogs`(关掉每请求访问日志)。
+
+### 基准测试(`bench/`)
+- 同一页面、同一数据在 gotsx / Go html/template / Gin / templ / Next.js 16 / Astro 7 / Hono(Bun)上各实现一遍; `bench/load` 是零依赖的 Go 压测器; `bench/run.py` 统一测吞吐、p50/p99、峰值 RSS、冷启动、构建时间、产物体积、浏览器下载的 HTML/JS 字节。
+- **Benchmark 工作流**(`workflow_dispatch`)在 GitHub 托管 runner 上跑, 结果写进 job summary 并提交回 `bench/results/`; README 引用的是 runner 数据而非开发机。`bench/README.md` 有方法说明与框架优劣对比。
+
+### demo 英文优先(`CLAUDE.md` 记录了语言策略)
+- `shop`: 默认 `en`, `zh` 为次级 locale(`/zh/...`); 192 件商品、分类、评论、校验消息全部英文, 中文走 i18n 目录; 手机号规则改为通用格式。
+- `admin`: 界面、种子数据、活动流、校验消息全部英文。`example`: 种子数据与岛标签英文。
+- `CLAUDE.md`: 英文为第一语言、中文为第二语言的规则, 常用命令, 保持项目一致的规矩。
+
+### 部署与发布
+- `Dockerfile`(distroless, ~15 MB)、`fly.toml`、`render.yaml`、`docs/deploy.md`; `docs/social-preview.png` 供仓库社交预览; README 徽章与截图; Issue / PR 模板。
+
 ## 0.6.0 — 设计系统、流式 SSR、文件约定、编辑器跳转: 路线图清零
 
 ### 设计系统(demo 全部重做)

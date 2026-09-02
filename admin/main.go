@@ -1,4 +1,4 @@
-// gotsx admin —— 企业后台管理示例: 认证 / 受保护路由 / 用户表格 CRUD / 服务端校验 / 模态框 / toast。
+// gotsx admin: a back-office demo — auth, protected routes, a users table with CRUD, server-side validation, modal, toasts.
 package main
 
 import (
@@ -44,7 +44,7 @@ func atoi(s string, d int) int {
 	return d
 }
 
-// 鉴权中间件: 未登录访问受保护路径 → 页面重定向 /login, 接口 → 401
+// auth middleware: unauthenticated access to a protected path → redirect pages to /login, APIs get 401
 func authMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
@@ -58,7 +58,7 @@ func authMW(next http.Handler) http.Handler {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-		// 已登录还访问 /login → 回首页
+		// already signed in and visiting /login → home
 		if p == "/login" && host.Auth.IsAuthed(sid(r)) {
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
@@ -68,8 +68,8 @@ func authMW(next http.Handler) http.Handler {
 }
 
 func main() {
-	addr := flag.String("addr", ":3000", "监听地址")
-	dev := flag.Bool("dev", false, "开发模式")
+	addr := flag.String("addr", ":3000", "listen address")
+	dev := flag.Bool("dev", false, "development mode")
 	flag.Parse()
 
 	panel := func(icon, msg string) gotsx.Node {
@@ -77,7 +77,7 @@ func main() {
 			[]gotsx.Attr{gotsx.A("class", "flex flex-col items-center justify-center py-32 text-center")},
 			gotsx.El("div", []gotsx.Attr{gotsx.A("class", "text-6xl")}, gotsx.Text(icon)),
 			gotsx.El("p", []gotsx.Attr{gotsx.A("class", "mt-4 text-slate-500")}, gotsx.Text(msg)),
-			gotsx.El("a", []gotsx.Attr{gotsx.A("href", "/"), gotsx.A("class", "mt-5 rounded-lg bg-brand-500 px-6 py-2.5 text-sm font-semibold text-white")}, gotsx.Text("回到仪表盘")))})
+			gotsx.El("a", []gotsx.Attr{gotsx.A("href", "/"), gotsx.A("class", "mt-5 rounded-lg bg-brand-500 px-6 py-2.5 text-sm font-semibold text-white")}, gotsx.Text("Back to dashboard")))})
 	}
 
 	err := gotsx.Serve(gotsx.Options{
@@ -95,9 +95,9 @@ func main() {
 			cookies["_name"] = s.Name
 			cookies["_role"] = s.Role
 		},
-		NotFound: func(p gotsx.PageProps) gotsx.Node { return panel("🔍", "找不到这个页面") },
+		NotFound: func(p gotsx.PageProps) gotsx.Node { return panel("🔍", "Page not found") },
 		ErrorPage: func(p gotsx.PageProps, err error) gotsx.Node {
-			return panel("😵", "服务器开小差了, 请稍后再试")
+			return panel("😵", "Something went wrong, please try again later")
 		},
 		Actions: map[string]http.HandlerFunc{
 			"POST /auth/login": func(w http.ResponseWriter, r *http.Request) {

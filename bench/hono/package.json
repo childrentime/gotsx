@@ -1,0 +1,1 @@
+{ "name": "bench-hono", "private": true, "type": "module", "scripts": { "start": "bun run index.tsx" }, "dependencies": { "hono": "4.13.5" } }

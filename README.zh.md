@@ -157,6 +157,10 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 
 在线文档站(`site` 应用的静态导出): **https://childrentime.github.io/gotsx/**
 
+## 基准测试
+
+`bench/` 把同一个 50 件商品的页面在 **gotsx、Go html/template、Gin、templ、Next.js 16、Astro 7、Hono(Bun)** 上各实现一遍, 用零依赖的 Go 压测器统一测吞吐、延迟、内存、冷启动、构建时间、产物体积和浏览器下载的 JS 体积, 在 GitHub 托管的 runner 上跑(**Benchmark** 工作流把结果提交到 `bench/results/`)。gotsx 把页面编译成直线式的 Go 写入(静态 HTML 编译期合并, `map` → `for`), 一页约 15 µs / 140 次分配, 服务端吞吐与 templ 同级; 表格与各框架优劣的对比见 [`bench/README.md`](bench/README.md)。
+
 ## 测试
 
 ```bash

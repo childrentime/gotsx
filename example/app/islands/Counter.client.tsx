@@ -9,7 +9,7 @@ export default function Counter({ start }: { start: number }) {
   });
   return (
     <button class="btn btn-outline btn-sm" onClick={() => setN(n + 1)}>
-      岛状态 {n} <span class="muted">×2 = {double}</span>
+      island state {n} <span class="muted">×2 = {double}</span>
       {n > 4 && <b> 🔥</b>}
     </button>
   );

@@ -7,5 +7,5 @@ export default function Logout() {
     await fetch("/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     window.location.href = "/login";
   };
-  return <button class="btn btn-ghost btn-icon-sm text-muted-foreground" title="退出" aria-label="退出" disabled={busy} onClick={out}><Icon name="logout" /></button>;
+  return <button class="btn btn-ghost btn-icon-sm text-muted-foreground" title="Sign out" aria-label="Sign out" disabled={busy} onClick={out}><Icon name="logout" /></button>;
 }

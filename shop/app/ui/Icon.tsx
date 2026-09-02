@@ -1,6 +1,6 @@
 import type { Node } from "gotsx";
 
-/** 16px 线性图标(lucide 风格), 两端共用。stroke 用 currentColor, 颜色跟随文字 */
+/** 16px line icons (lucide style), shared by both sides. stroke = currentColor, so the color follows the text */
 function glyph(name: string): Node {
   switch (name) {
     case "search":

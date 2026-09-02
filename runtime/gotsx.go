@@ -25,6 +25,7 @@ type Ctx struct {
 	hydrate int
 	pending []*Pending // 本次渲染登记的 Suspense 边界(流式: 外壳先发, 这些随后并发填充)
 	seq     *uint32    // 边界 id 计数器, 嵌套渲染共享
+	inject  string     // 请求层要塞进 </head> 前的引导脚本; 写完后清空(没有 head 就塞在 </body> 前, 再没有就追加到末尾)
 }
 
 func (c *Ctx) Raw(s string) { c.b.WriteString(s) }
@@ -51,6 +52,20 @@ func RenderPending(n Node, seq *uint32) (string, []*Pending) {
 	c := &Ctx{seq: seq}
 	if n != nil {
 		n(c)
+	}
+	return c.b.String(), c.pending
+}
+
+// RenderDoc: 渲染整个文档 —— 一次性写入 doctype, 在 </head>(或 </body>)前塞入 inject, 不做事后的字符串替换/拼接。
+func RenderDoc(n Node, seq *uint32, inject string) (string, []*Pending) {
+	c := &Ctx{seq: seq, inject: inject}
+	c.b.Grow(16 * 1024)
+	c.b.WriteString("<!DOCTYPE html>")
+	if n != nil {
+		n(c)
+	}
+	if c.inject != "" { // 既没有 head 也没有 body
+		c.b.WriteString(c.inject)
 	}
 	return c.b.String(), c.pending
 }
@@ -119,6 +134,10 @@ func El(tag string, attrs []Attr, kids ...Node) Node {
 			if k != nil {
 				k(c)
 			}
+		}
+		if c.inject != "" && (tag == "head" || tag == "body") {
+			c.b.WriteString(c.inject)
+			c.inject = ""
 		}
 		c.b.WriteString("</")
 		c.b.WriteString(tag)
@@ -1030,4 +1049,54 @@ func IsoDate(ms float64) string {
 		return ""
 	}
 	return time.UnixMilli(int64(ms)).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+// ---------- 流式写入(生成代码用): 静态 HTML 合并成整段写入, 动态部分就地转义 ----------
+
+// W: 原样写入(编译器已在编译期转义好的静态 HTML)
+func (c *Ctx) W(s string) { c.b.WriteString(s) }
+
+// Esc: 转义后写入(静态文本表达式)
+func (c *Ctx) Esc(s string) { c.b.WriteString(html.EscapeString(s)) }
+
+// Dyn: 响应式文本 —— 岛内带 <!--$-->…<!--/--> 标记
+func (c *Ctx) Dyn(s string) { Dyn(s)(c) }
+
+// Attr: 动态字符串属性 ` name="value"`(转义)
+func (c *Ctx) Attr(name, val string) {
+	c.b.WriteByte(' ')
+	c.b.WriteString(name)
+	c.b.WriteString(`="`)
+	c.b.WriteString(html.EscapeString(val))
+	c.b.WriteByte('"')
+}
+
+// N: 渲染一个可能为 nil 的节点
+func (c *Ctx) N(n Node) {
+	if n != nil {
+		n(c)
+	}
+}
+
+// Close: 闭合 head / body(引导脚本注入点); 其它标签由编译器直接写 </tag>
+func (c *Ctx) Close(tag string) {
+	if c.inject != "" && (tag == "head" || tag == "body") {
+		c.b.WriteString(c.inject)
+		c.inject = ""
+	}
+	c.b.WriteString("</")
+	c.b.WriteString(tag)
+	c.b.WriteByte('>')
+}
+
+// ListStart / ListEnd: 响应式列表的块标记(岛内 <!--[--> … <!--]-->), 供编译器把 map 内联成 for 循环时使用
+func (c *Ctx) ListStart() {
+	if c.hydrate > 0 {
+		c.b.WriteString("<!--[-->")
+	}
+}
+func (c *Ctx) ListEnd() {
+	if c.hydrate > 0 {
+		c.b.WriteString("<!--]-->")
+	}
 }

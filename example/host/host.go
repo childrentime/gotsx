@@ -141,11 +141,11 @@ var Registry = map[string]gotsx.HostModule{
 
 func seed() []Model {
 	return []Model{
-		{"m1", "可折叠手机支架", "ziwei", "无需支撑, 一体打印, 铰链公差 0.3mm", 1287, []string{"实用", "无支撑"}, "2026-08-02T10:00:00Z"},
-		{"m2", "参数化线缆收纳盒", "lin", "OpenSCAD 参数化, 三种尺寸", 402, []string{"收纳", "参数化"}, "2026-08-10T09:30:00Z"},
-		{"m3", "AMS 干燥剂盒", "maker_wu", "适配 AMS 内舱, 卡扣固定", 3310, []string{"Bambu", "AMS"}, "2026-07-21T14:12:00Z"},
-		{"m4", "低多边形柴犬", "kyo", "多色, 建议 0.12 层高", 958, []string{"摆件", "多色"}, "2026-08-18T20:45:00Z"},
-		{"m5", "六角抽屉模块", "ziwei", "可无限拼接的桌面收纳", 2201, []string{"收纳", "模块化"}, "2026-06-30T08:00:00Z"},
-		{"m6", "键盘腕托 (TPU)", "lin", "TPU 95A, 填充 15%", 133, []string{"TPU", "实用"}, "2026-08-25T11:20:00Z"},
+		{"m1", "Foldable Phone Stand", "ziwei", "Prints in one piece, no supports; 0.3 mm hinge clearance", 1287, []string{"practical", "no-supports"}, "2026-08-02T10:00:00Z"},
+		{"m2", "Parametric Cable Box", "lin", "OpenSCAD parametric, three sizes", 402, []string{"storage", "parametric"}, "2026-08-10T09:30:00Z"},
+		{"m3", "AMS Desiccant Tray", "maker_wu", "Fits the AMS bay, snap-fit", 3310, []string{"Bambu", "AMS"}, "2026-07-21T14:12:00Z"},
+		{"m4", "Low-poly Shiba", "kyo", "Multi-colour, 0.12 mm layers recommended", 958, []string{"decor", "multi-colour"}, "2026-08-18T20:45:00Z"},
+		{"m5", "Hex Drawer Module", "ziwei", "Endlessly tileable desk storage", 2201, []string{"storage", "modular"}, "2026-06-30T08:00:00Z"},
+		{"m6", "Keyboard Wrist Rest (TPU)", "lin", "TPU 95A, 15% infill", 133, []string{"TPU", "practical"}, "2026-08-25T11:20:00Z"},
 	}
 }

@@ -3,7 +3,7 @@ import type { Card } from "host:catalog";
 import CardShell from "../ui/CardShell";
 import SkeletonCard from "../ui/SkeletonCard";
 
-export default function Related({ id }: { id: string }) {
+export default function Related({ id, locale = "" }: { id: string; locale?: string }) {
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -18,7 +18,7 @@ export default function Related({ id }: { id: string }) {
   return (
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
       {loading && [0, 1, 2, 3, 4, 5].map(() => <SkeletonCard />)}
-      {cards.map((c) => <CardShell card={c}></CardShell>)}
+      {cards.map((c) => <CardShell card={c} locale={locale}></CardShell>)}
     </div>
   );
 }

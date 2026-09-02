@@ -6,9 +6,9 @@ import CartBadge from "../islands/CartBadge.client";
 import LocaleSwitch from "../islands/LocaleSwitch.client";
 import Icon from "../ui/Icon";
 
-export default function Layout({ title, sid, active = "", q = "", wide = false, desc = "", path = "", image = "", ld = "", ogType = "website", locale = "zh", children }: { title: string; sid: string; active?: string; q?: string; wide?: boolean; desc?: string; path?: string; image?: string; ld?: string; ogType?: string; locale?: string; children?: Node }) {
-  const lc = locale !== "" ? locale : "zh";
-  const d = desc !== "" ? desc : "gomu — 全球好物, 工厂直发。20 万+ 精选好物, 满 ¥69 包邮, 7 天无理由退换。";
+export default function Layout({ title, sid, active = "", q = "", wide = false, desc = "", path = "", image = "", ld = "", ogType = "website", locale = "en", children }: { title: string; sid: string; active?: string; q?: string; wide?: boolean; desc?: string; path?: string; image?: string; ld?: string; ogType?: string; locale?: string; children?: Node }) {
+  const lc = locale !== "" ? locale : "en";
+  const d = desc !== "" ? desc : t(lc, "meta.description");
   const cart = view(sid);
   const cats = categories();
   const container = wide ? "mx-auto w-full max-w-[1200px] px-6" : "container-page";

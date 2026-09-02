@@ -1,7 +1,7 @@
 import { useState, emit } from "gotsx";
 import Icon from "../ui/Icon";
 
-export default function CheckoutForm({ totalFmt }: { totalFmt: string }) {
+export default function CheckoutForm({ totalFmt, locale = "" }: { totalFmt: string; locale?: string }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -24,25 +24,25 @@ export default function CheckoutForm({ totalFmt }: { totalFmt: string }) {
     <div class="space-y-4">
       {errs._ !== undefined && <div class="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"><Icon name="alert" />{errs._}</div>}
       <div class="space-y-1.5">
-        <label class="label">收货人</label>
-        <input class={field(errs.name !== undefined)} value={name} placeholder="请输入姓名" onInput={(e) => setName(e.target.value)} />
+        <label class="label">{t(locale, "form.name")}</label>
+        <input class={field(errs.name !== undefined)} value={name} placeholder={t(locale, "form.namePh")} onInput={(e) => setName(e.target.value)} />
         {errs.name !== undefined && <p class="text-xs text-destructive">{errs.name}</p>}
       </div>
       <div class="space-y-1.5">
-        <label class="label">手机号</label>
-        <input class={field(errs.phone !== undefined)} value={phone} placeholder="11 位手机号" onInput={(e) => setPhone(e.target.value)} />
+        <label class="label">{t(locale, "form.phone")}</label>
+        <input class={field(errs.phone !== undefined)} value={phone} placeholder={t(locale, "form.phonePh")} onInput={(e) => setPhone(e.target.value)} />
         {errs.phone !== undefined && <p class="text-xs text-destructive">{errs.phone}</p>}
       </div>
       <div class="space-y-1.5">
-        <label class="label">收货地址</label>
-        <input class={field(errs.address !== undefined)} value={address} placeholder="省 / 市 / 区 + 详细地址" onInput={(e) => setAddress(e.target.value)} />
+        <label class="label">{t(locale, "form.address")}</label>
+        <input class={field(errs.address !== undefined)} value={address} placeholder={t(locale, "form.addressPh")} onInput={(e) => setAddress(e.target.value)} />
         {errs.address !== undefined && <p class="text-xs text-destructive">{errs.address}</p>}
       </div>
       <button class="btn btn-primary btn-lg mt-2 w-full" disabled={busy} onClick={submit}>
         {busy && <Icon name="loader" className="animate-spin" />}
-        {busy ? "提交中…" : `提交订单 · ${totalFmt}`}
+        {busy ? t(locale, "form.submitting") : tv(locale, "form.submit", { total: totalFmt })}
       </button>
-      <p class="text-center text-xs text-muted-foreground">点击提交即代表同意《服务条款》· 演示环境, 不会真的扣款</p>
+      <p class="text-center text-xs text-muted-foreground">{t(locale, "form.note")}</p>
     </div>
   );
 }

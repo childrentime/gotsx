@@ -42,7 +42,8 @@ conventions, not rules; `*.server.tsx` / `*.client.tsx` / no-suffix compile targ
 `gotsx.json` (optional) keys `module` and `hostPackage`; `gen/` layout (`Routes`, `NotFound`, `ErrorPage`,
 `ClientFS`, `client/*.js`).
 
-**Runtime API used from `main.go`.** `gotsx.Serve`, `gotsx.Options` and every exported field it has today,
+**Runtime API used from `main.go`.** `gotsx.Serve`, `gotsx.Handler` (the same handler chain without a server, for
+your own `http.Server` / mux / tests), `gotsx.Options` and every exported field it has today,
 `gotsx.Route`, `gotsx.PageProps` / `LayoutProps` / `ErrorProps`, `gotsx.HostModule` / `GenerateHost`,
 `gotsx.ErrNotFound`, `gotsx.I18n`, `gotsx.ClientEvent`, `gotsx.FindDir`, `gotsx.SameOrigin`, and the node
 constructors an app may use to build custom pages in Go (`El A AB AN Text Frag Render`).

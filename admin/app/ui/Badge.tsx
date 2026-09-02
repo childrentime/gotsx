@@ -1,5 +1,5 @@
 import type { Node } from "gotsx";
-/** 角色 / 状态徽标: 角色用中性层级(primary / secondary / outline), 状态用 success / secondary */
+/** role / status badge: roles use neutral tiers (primary / secondary / outline), statuses use success / secondary */
 function cls(tone: string): string {
   if (tone === "admin") return "badge-primary";
   if (tone === "editor") return "badge-secondary";

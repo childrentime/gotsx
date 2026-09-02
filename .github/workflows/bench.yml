@@ -1,0 +1,71 @@
+name: Benchmark
+# Runs bench/run.py on a GitHub-hosted runner so the published numbers come from a neutral, reproducible machine
+# (ubuntu-latest: 4 vCPU, 16 GB). Results land in the job summary, as an artifact, and — when `publish` is true —
+# are committed to bench/results/ on the branch the workflow ran on.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Seconds of measured load per contender
+        default: "15"
+      conc:
+        description: Concurrent keep-alive connections
+        default: "64"
+      publish:
+        description: Commit bench/results/*.md and *.json back to the repository
+        type: boolean
+        default: true
+permissions:
+  contents: write
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - name: Install Node contenders (Next.js, Astro, Hono)
+        run: |
+          (cd bench/nextjs && npm ci --no-audit --no-fund --loglevel=error)
+          (cd bench/astro && npm ci --no-audit --no-fund --loglevel=error)
+          (cd bench/hono && bun install --frozen-lockfile)
+      - name: Install Playwright (client weight measurements)
+        run: |
+          pip install --quiet playwright
+          python3 -m playwright install --with-deps chromium
+      - name: Machine
+        run: |
+          echo "### Machine" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          (lscpu | grep -E 'Model name|^CPU\(s\)'; free -h | head -2; go version; node -v; bun -v) | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Bench (all cores)
+        run: python3 bench/run.py --duration "${{ inputs.duration }}" --conc "${{ inputs.conc }}"
+      - name: Bench (GOMAXPROCS=1 for the Go servers)
+        run: python3 bench/run.py --duration "${{ inputs.duration }}" --conc "${{ inputs.conc }}" --single-core --no-client
+      - name: Summary
+        run: |
+          echo "### All cores (c=${{ inputs.conc }}, ${{ inputs.duration }}s)" >> "$GITHUB_STEP_SUMMARY"
+          cat bench/results/results.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Go servers pinned to one core" >> "$GITHUB_STEP_SUMMARY"
+          cat bench/results/results-1core.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/
+      - name: Commit results
+        if: ${{ inputs.publish }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bench/results/
+          git commit -m "bench: results from $(lscpu | grep 'Model name' | sed 's/.*: *//') on $(date -u +%Y-%m-%d) [skip ci]" || echo "no changes"
+          git push

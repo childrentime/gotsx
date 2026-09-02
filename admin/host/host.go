@@ -1,5 +1,5 @@
-// Package host: 后台管理应用的宿主模块 —— 认证会话 + 用户目录(CRUD)。
-// 写操作(登录/增删改)是 Go 方法, 由 action 调用, 方言侧只读。
+// Package host is the admin demo's host module: auth sessions + a user directory (CRUD).
+// Writes (login / create / update / delete) are Go methods called from actions; the dialect only reads.
 package host
 
 import (
@@ -15,7 +15,7 @@ import (
 	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
-// ---------- 认证 ----------
+// ---------- auth ----------
 
 type Account struct {
 	User string
@@ -41,7 +41,7 @@ func (a *AuthModule) Login(user, pass string) (string, error) {
 	defer a.mu.Unlock()
 	acc, ok := a.accounts[strings.TrimSpace(strings.ToLower(user))]
 	if !ok || acc.Pass != pass {
-		return "", fmt.Errorf("用户名或密码错误")
+		return "", fmt.Errorf("wrong username or password")
 	}
 	b := make([]byte, 16)
 	rand.Read(b)
@@ -56,7 +56,7 @@ func (a *AuthModule) Logout(sid string) {
 	delete(a.sessions, sid)
 }
 
-// Current: 供 dialect 读取当前登录者(未登录返回空 Session)
+// Current: the signed-in session for the dialect (an empty Session when not signed in)
 func (a *AuthModule) Current(sid string) Session {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -75,7 +75,7 @@ func (a *AuthModule) IsAuthed(sid string) bool {
 	return ok
 }
 
-// ---------- 用户目录 ----------
+// ---------- user directory ----------
 
 type User struct {
 	ID       string `json:"id"`
@@ -118,7 +118,7 @@ func (m *UsersModule) counts() (active, admins int) {
 	return
 }
 
-// Query: 供 dialect / api 读取, 支持搜索/角色过滤/排序/分页
+// Query: read by the dialect / API; search, role filter, sort, pagination
 func (m *UsersModule) Query(q, role, sortBy string, page int) UserPage {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -185,32 +185,32 @@ func (m *UsersModule) Get(id string) (User, error) {
 			return u, nil
 		}
 	}
-	return User{}, fmt.Errorf("%w: 用户 %s", gotsx.ErrNotFound, id)
+	return User{}, fmt.Errorf("%w: user %s", gotsx.ErrNotFound, id)
 }
 
 var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 var validRole = map[string]bool{"admin": true, "editor": true, "viewer": true}
 
-// Validate: 服务端字段校验, 返回 字段→错误信息
+// validate: server-side field validation, returns field → message
 func (m *UsersModule) validate(name, email, role, dept string, selfID string) map[string]string {
 	errs := map[string]string{}
 	if len(strings.TrimSpace(name)) < 2 {
-		errs["name"] = "姓名至少 2 个字"
+		errs["name"] = "Name must be at least 2 characters"
 	}
 	if !emailRe.MatchString(strings.TrimSpace(email)) {
-		errs["email"] = "邮箱格式不正确"
+		errs["email"] = "Invalid email address"
 	} else {
 		for _, u := range m.list {
 			if u.ID != selfID && strings.EqualFold(u.Email, strings.TrimSpace(email)) {
-				errs["email"] = "该邮箱已被占用"
+				errs["email"] = "This email is already in use"
 			}
 		}
 	}
 	if !validRole[role] {
-		errs["role"] = "角色不合法"
+		errs["role"] = "Invalid role"
 	}
 	if strings.TrimSpace(dept) == "" {
-		errs["dept"] = "请填写部门"
+		errs["dept"] = "Department is required"
 	}
 	return errs
 }
@@ -225,7 +225,7 @@ func (m *UsersModule) Create(name, email, role, dept string) (User, map[string]s
 	u := User{
 		ID: fmt.Sprintf("u%03d", m.seq), Name: strings.TrimSpace(name), Email: strings.TrimSpace(email),
 		Role: role, Status: "active", Dept: strings.TrimSpace(dept),
-		Created: time.Now().Format("2006-01-02"), LastSeen: "刚刚",
+		Created: time.Now().Format("2006-01-02"), LastSeen: "just now",
 	}
 	m.list = append([]User{u}, m.list...)
 	return u, nil
@@ -249,7 +249,7 @@ func (m *UsersModule) Update(id, name, email, role, dept, status string) (User, 
 			return m.list[i], nil
 		}
 	}
-	return User{}, map[string]string{"_": "用户不存在"}
+	return User{}, map[string]string{"_": "User not found"}
 }
 
 func (m *UsersModule) Delete(id string) bool {
@@ -264,7 +264,7 @@ func (m *UsersModule) Delete(id string) bool {
 	return false
 }
 
-// ---------- 仪表盘统计 ----------
+// ---------- dashboard stats ----------
 
 type StatsModule struct{}
 
@@ -282,10 +282,10 @@ func (StatsModule) Cards() []Stat {
 	total := len(Users.list)
 	Users.mu.Unlock()
 	return []Stat{
-		{"总用户数", fmt.Sprintf("%d", total), "+12%", true, "👥"},
-		{"活跃用户", fmt.Sprintf("%d", active), "+8%", true, "✅"},
-		{"管理员", fmt.Sprintf("%d", admins), "0%", true, "🛡️"},
-		{"本月新增", "23", "+34%", true, "📈"},
+		{"Total users", fmt.Sprintf("%d", total), "+12%", true, "👥"},
+		{"Active users", fmt.Sprintf("%d", active), "+8%", true, "✅"},
+		{"Admins", fmt.Sprintf("%d", admins), "0%", true, "🛡️"},
+		{"New this month", "23", "+34%", true, "📈"},
 	}
 }
 
@@ -298,15 +298,15 @@ type Activity struct {
 
 func (StatsModule) Recent() []Activity {
 	return []Activity{
-		{"陈晓", "创建了用户 «李雷»", "2 分钟前", "➕"},
-		{"王芳", "修改了 «销售部» 的权限", "18 分钟前", "✏️"},
-		{"系统", "自动禁用了 3 个长期未登录账号", "1 小时前", "🔒"},
-		{"赵敏", "导出了用户报表", "3 小时前", "📤"},
-		{"陈晓", "登录了后台", "5 小时前", "🔑"},
+		{"Alice Chen", "created user “Liam Lee”", "2 minutes ago", "➕"},
+		{"Fiona Wang", "changed permissions for “Sales”", "18 minutes ago", "✏️"},
+		{"System", "auto-disabled 3 dormant accounts", "1 hour ago", "🔒"},
+		{"Mia Zhao", "exported the user report", "3 hours ago", "📤"},
+		{"Alice Chen", "signed in to the console", "5 hours ago", "🔑"},
 	}
 }
 
-// ---------- 种子数据 ----------
+// ---------- seed data ----------
 
 var (
 	Auth  = &AuthModule{accounts: seedAccounts(), sessions: map[string]string{}}
@@ -316,8 +316,8 @@ var (
 
 func seedAccounts() map[string]Account {
 	return map[string]Account{
-		"admin": {User: "admin", Pass: "admin123", Name: "超级管理员", Role: "admin"},
-		"demo":  {User: "demo", Pass: "demo", Name: "演示账号", Role: "viewer"},
+		"admin": {User: "admin", Pass: "admin123", Name: "Super Admin", Role: "admin"},
+		"demo":  {User: "demo", Pass: "demo", Name: "Demo Account", Role: "viewer"},
 	}
 }
 
@@ -328,8 +328,8 @@ func NewSID() string {
 }
 
 func seedUsers() []User {
-	names := []string{"李雷", "韩梅梅", "张伟", "王芳", "刘洋", "陈静", "杨帆", "赵敏", "孙浩", "周杰", "吴强", "郑爽", "冯磊", "蒋雯", "沈括", "韩寒", "许巍", "邓超", "曹操", "范冰"}
-	depts := []string{"研发部", "销售部", "市场部", "人事部", "财务部", "运营部"}
+	names := []string{"Liam Lee", "Hannah Meyer", "Zack Wang", "Fiona Wang", "Leo Liu", "Claire Chen", "Frank Yang", "Mia Zhao", "Sam Sun", "Jay Zhou", "Quinn Wu", "Sophie Zheng", "Felix Feng", "Wendy Jiang", "Kai Shen", "Henry Han", "Xavier Xu", "Chad Deng", "Cody Cao", "Bing Fan"}
+	depts := []string{"Engineering", "Sales", "Marketing", "HR", "Finance", "Operations"}
 	roles := []string{"admin", "editor", "viewer", "editor", "viewer", "viewer"}
 	out := make([]User, len(names))
 	for i, n := range names {
@@ -341,7 +341,7 @@ func seedUsers() []User {
 			ID: fmt.Sprintf("u%03d", i+1), Name: n,
 			Email: fmt.Sprintf("%s@gotsx.dev", []string{"lilei", "hmm", "zhw", "wf", "ly", "cj", "yf", "zm", "sh", "zj", "wq", "zs", "fl", "jw", "sk", "hh", "xw", "dc", "cc", "fb"}[i]),
 			Role:  roles[i%len(roles)], Status: status, Dept: depts[i%len(depts)],
-			Created: fmt.Sprintf("2026-0%d-1%d", (i%8)+1, i%10), LastSeen: []string{"刚刚", "5 分钟前", "1 小时前", "今天", "昨天", "3 天前"}[i%6],
+			Created: fmt.Sprintf("2026-0%d-1%d", (i%8)+1, i%10), LastSeen: []string{"just now", "5 minutes ago", "1 hour ago", "today", "yesterday", "3 days ago"}[i%6],
 		}
 	}
 	return out

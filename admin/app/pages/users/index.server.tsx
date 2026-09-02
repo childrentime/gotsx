@@ -6,7 +6,7 @@ import Toasts from "../../islands/Toasts.client";
 
 export default function UsersPage({ cookies }: PageProps) {
   return (
-    <Shell title="用户管理" active="users" name={cookies._name ?? ""} role={cookies._role ?? ""}>
+    <Shell title="Users" active="users" name={cookies._name ?? ""} role={cookies._role ?? ""}>
       <UsersTable canEdit={cookies._role === "admin" || cookies._role === "editor"} />
       <UserModal />
       <Toasts />

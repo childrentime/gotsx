@@ -31,7 +31,7 @@ export default function UsersTable({ canEdit }: { canEdit: boolean }) {
     on("admin:changed", () => load());
   }, []);
 
-  // 客户端搜索 + 角色过滤 + 排序
+  // client-side search + role filter + sort
   const filtered = all.filter((u) => {
     const k = q.toLowerCase();
     const hit = k === "" || u.name.toLowerCase().includes(k) || u.email.toLowerCase().includes(k) || u.dept.includes(q);
@@ -46,47 +46,47 @@ export default function UsersTable({ canEdit }: { canEdit: boolean }) {
   const cur = Math.min(page, pages);
   const shown = sorted.slice((cur - 1) * perPage, cur * perPage);
 
-  const roleLabel = (r: string) => (r === "admin" ? "管理员" : r === "editor" ? "编辑" : "只读");
+  const roleLabel = (r: string) => (r === "admin" ? "Admin" : r === "editor" ? "Editor" : "Viewer");
   const del = async (u: User) => {
-    if (!window.confirm(`确定删除用户「${u.name}」?`)) return;
+    if (!window.confirm(`Delete user “${u.name}”?`)) return;
     setDeleting(u.id);
     const r = await fetch("/users/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id }) });
     const d = await r.json();
     setDeleting("");
     if (d.ok) {
-      emit("admin:toast", { msg: "已删除用户", kind: "ok" });
+      emit("admin:toast", { msg: "User deleted", kind: "ok" });
       load();
     } else {
-      emit("admin:toast", { msg: "删除失败", kind: "err" });
+      emit("admin:toast", { msg: "Delete failed", kind: "err" });
     }
   };
 
   return (
     <div>
       <div class="mb-4 grid gap-4 sm:grid-cols-3">
-        <div class="card p-5"><div class="text-sm text-muted-foreground">用户总数</div><div class="mt-2 text-2xl font-semibold tracking-tight">{all.length}</div></div>
-        <div class="card p-5"><div class="text-sm text-muted-foreground">活跃</div><div class="mt-2 text-2xl font-semibold tracking-tight">{active}</div></div>
-        <div class="card p-5"><div class="text-sm text-muted-foreground">管理员</div><div class="mt-2 text-2xl font-semibold tracking-tight">{admins}</div></div>
+        <div class="card p-5"><div class="text-sm text-muted-foreground">Total users</div><div class="mt-2 text-2xl font-semibold tracking-tight">{all.length}</div></div>
+        <div class="card p-5"><div class="text-sm text-muted-foreground">Active</div><div class="mt-2 text-2xl font-semibold tracking-tight">{active}</div></div>
+        <div class="card p-5"><div class="text-sm text-muted-foreground">Admins</div><div class="mt-2 text-2xl font-semibold tracking-tight">{admins}</div></div>
       </div>
 
       <div class="card">
         <div class="flex flex-wrap items-center gap-2 border-b border-border p-4">
           <div class="relative min-w-[200px] flex-1">
             <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Icon name="search" /></span>
-            <input class="input pl-9" placeholder="搜索姓名 / 邮箱 / 部门…" value={q} onInput={(e) => { setQ(e.target.value); setPage(1); }} />
+            <input class="input pl-9" placeholder="Search name / email / department…" value={q} onInput={(e) => { setQ(e.target.value); setPage(1); }} />
           </div>
           <select class="select" value={role} onChange={(e) => { setRole(e.target.value); setPage(1); }}>
-            <option value="all">全部角色</option>
-            <option value="admin">管理员</option>
-            <option value="editor">编辑</option>
-            <option value="viewer">只读</option>
+            <option value="all">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="editor">Editor</option>
+            <option value="viewer">Viewer</option>
           </select>
           <select class="select" value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="name">按姓名</option>
-            <option value="role">按角色</option>
-            <option value="dept">按部门</option>
+            <option value="name">By name</option>
+            <option value="role">By role</option>
+            <option value="dept">By department</option>
           </select>
-          {canEdit && <button class="btn btn-primary" onClick={() => emit("admin:new", {})}><Icon name="plus" />新建用户</button>}
+          {canEdit && <button class="btn btn-primary" onClick={() => emit("admin:new", {})}><Icon name="plus" />New user</button>}
         </div>
 
         {loading ? (
@@ -96,12 +96,12 @@ export default function UsersTable({ canEdit }: { canEdit: boolean }) {
             ))}
           </div>
         ) : shown.length === 0 ? (
-          <div class="flex flex-col items-center py-20 text-muted-foreground"><Icon name="search" cls="h-6 w-6" /><p class="mt-3 text-sm">没有匹配的用户</p></div>
+          <div class="flex flex-col items-center py-20 text-muted-foreground"><Icon name="search" cls="h-6 w-6" /><p class="mt-3 text-sm">No matching users</p></div>
         ) : (
           <div class="overflow-x-auto">
             <table class="table min-w-[640px]">
               <thead>
-                <tr><th>用户</th><th>角色</th><th>部门</th><th>状态</th><th>最近活跃</th><th></th></tr>
+                <tr><th>User</th><th>Role</th><th>Department</th><th>Status</th><th>Last seen</th><th></th></tr>
               </thead>
               <tbody>
                 {shown.map((u) => (
@@ -114,13 +114,13 @@ export default function UsersTable({ canEdit }: { canEdit: boolean }) {
                     </td>
                     <td><Badge tone={u.role}>{roleLabel(u.role)}</Badge></td>
                     <td class="whitespace-nowrap text-muted-foreground">{u.dept}</td>
-                    <td><Badge tone={u.status}>{u.status === "active" ? "启用" : "禁用"}</Badge></td>
+                    <td><Badge tone={u.status}>{u.status === "active" ? "Active" : "Disabled"}</Badge></td>
                     <td class="whitespace-nowrap text-xs text-muted-foreground">{u.lastSeen}</td>
                     <td class="text-right">
                       {canEdit && (
                         <div class="flex justify-end gap-1">
-                          <button class="btn btn-ghost btn-icon-sm text-muted-foreground" title="编辑" aria-label="编辑" onClick={() => emit("admin:edit", u)}><Icon name="pencil" /></button>
-                          <button class="btn btn-ghost btn-icon-sm text-muted-foreground hover:text-destructive" title="删除" aria-label="删除" disabled={deleting === u.id} onClick={() => del(u)}><Icon name="trash" /></button>
+                          <button class="btn btn-ghost btn-icon-sm text-muted-foreground" title="Edit" aria-label="Edit" onClick={() => emit("admin:edit", u)}><Icon name="pencil" /></button>
+                          <button class="btn btn-ghost btn-icon-sm text-muted-foreground hover:text-destructive" title="Delete" aria-label="Delete" disabled={deleting === u.id} onClick={() => del(u)}><Icon name="trash" /></button>
                         </div>
                       )}
                     </td>
@@ -133,10 +133,10 @@ export default function UsersTable({ canEdit }: { canEdit: boolean }) {
 
         {!loading && sorted.length > perPage && (
           <div class="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
-            <span class="text-muted-foreground">共 {sorted.length} 条 · 第 {cur} / {pages} 页</span>
+            <span class="text-muted-foreground">{sorted.length} users · page {cur} / {pages}</span>
             <div class="flex gap-2">
-              <button class="btn btn-outline btn-sm" disabled={cur <= 1} onClick={() => setPage(cur - 1)}><Icon name="left" />上一页</button>
-              <button class="btn btn-outline btn-sm" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>下一页<Icon name="right" /></button>
+              <button class="btn btn-outline btn-sm" disabled={cur <= 1} onClick={() => setPage(cur - 1)}><Icon name="left" />Previous</button>
+              <button class="btn btn-outline btn-sm" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>Next<Icon name="right" /></button>
             </div>
           </div>
         )}

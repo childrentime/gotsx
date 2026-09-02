@@ -8,7 +8,7 @@ export default function Dashboard({ cookies }: PageProps) {
   const acts = recent();
   const bars = [30, 45, 38, 52, 48, 61, 55, 70, 64, 78, 72, 88];
   return (
-    <Shell title="仪表盘" active="home" name={cookies._name ?? ""} role={cookies._role ?? ""}>
+    <Shell title="Dashboard" active="home" name={cookies._name ?? ""} role={cookies._role ?? ""}>
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stat.map((s) => (
           <div class="card p-5">
@@ -23,8 +23,8 @@ export default function Dashboard({ cookies }: PageProps) {
       <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
         <section class="card">
           <div class="card-header flex-row items-baseline justify-between">
-            <h2 class="card-title">用户增长</h2>
-            <span class="text-xs text-muted-foreground">近 12 周</span>
+            <h2 class="card-title">User growth</h2>
+            <span class="text-xs text-muted-foreground">Last 12 weeks</span>
           </div>
           <div class="card-body">
             <div class="flex h-40 items-end gap-1.5">
@@ -32,11 +32,11 @@ export default function Dashboard({ cookies }: PageProps) {
                 <div class={i === bars.length - 1 ? "flex-1 rounded-sm bg-primary" : "flex-1 rounded-sm bg-primary/20"} style={`height:${h}%`}></div>
               ))}
             </div>
-            <div class="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>12 周前</span><span>本周</span></div>
+            <div class="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>12 weeks ago</span><span>This week</span></div>
           </div>
         </section>
         <section class="card">
-          <div class="card-header"><h2 class="card-title">最近动态</h2></div>
+          <div class="card-header"><h2 class="card-title">Recent activity</h2></div>
           <div class="card-body">
             <div class="divide-y divide-border">
               {acts.map((a) => (

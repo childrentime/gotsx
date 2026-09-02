@@ -30,7 +30,7 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 306
+          "line": 308
         },
         "setQty": {
           "kind": "method",
@@ -58,7 +58,7 @@
             "go": "host.CartView"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 344
+          "line": 346
         },
         "view": {
           "kind": "method",
@@ -74,7 +74,7 @@
             "go": "host.CartView"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 299
+          "line": 301
         }
       }
     },
@@ -121,7 +121,7 @@
             "go": "host.FeedResult"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 674
+          "line": 673
         },
         "flash": {
           "kind": "method",
@@ -141,7 +141,7 @@
             "go": "[]host.Card"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 662
+          "line": 661
         },
         "flashLeftMs": {
           "kind": "method",
@@ -224,7 +224,7 @@
             "go": "host.PagedCards"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 657
+          "line": 656
         },
         "productReviews": {
           "kind": "method",
@@ -240,7 +240,7 @@
             "go": "[]host.Review"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 213
+          "line": 215
         },
         "related": {
           "kind": "method",
@@ -256,7 +256,7 @@
             "go": "[]host.Card"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 695
+          "line": 694
         }
       }
     },
@@ -277,7 +277,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 495
+          "line": 497
         },
         "fmtSold": {
           "kind": "method",
@@ -293,7 +293,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 504
+          "line": 506
         }
       }
     },
@@ -319,7 +319,7 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 422
+          "line": 424
         },
         "list": {
           "kind": "method",
@@ -335,7 +335,7 @@
             "go": "[]host.Order"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 412
+          "line": 414
         },
         "place": {
           "kind": "method",
@@ -364,7 +364,7 @@
           },
           "throws": true,
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 434
+          "line": 436
         }
       }
     },
@@ -379,7 +379,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 470
+          "line": 472
         },
         "name": {
           "kind": "method",
@@ -389,7 +389,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 469
+          "line": 471
         },
         "sitemapURLs": {
           "kind": "method",
@@ -399,7 +399,7 @@
             "go": "[]string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 482
+          "line": 484
         },
         "url": {
           "kind": "method",
@@ -415,7 +415,7 @@
             "go": "string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 471
+          "line": 473
         }
       }
     },
@@ -436,7 +436,7 @@
             "go": "[]string"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 374
+          "line": 376
         },
         "toggle": {
           "kind": "method",
@@ -456,7 +456,7 @@
             "go": "bool"
           },
           "file": "/Users/ziwei/work/github/gotsx/shop/host/host.go",
-          "line": 386
+          "line": 388
         }
       }
     }

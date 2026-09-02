@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+.astro/
+*/products.json
+*/shared.css
+*/src/products.json
+*/src/shared.css
+gotsx/gen/
+gotsx/.gotsx/
+gotsx/app/.gen/
+stdlib/stdlib
+gin/gin
+templ/templ
+load/load
+results/*.json

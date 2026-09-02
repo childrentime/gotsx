@@ -1,37 +1,42 @@
-# gomu — Temu 风格全栈电商(gotsx 示例)
+# gomu — a full-stack e-commerce demo (gotsx)
 
-用 gotsx 方言 + Go 宿主写的完整电商应用, 用来压测"这个框架够不够企业级"。
+A complete store written in the gotsx dialect with a Go host, used to push the framework toward "enterprise-grade".
+English is the default locale; Chinese is available under `/zh/...`.
 
 ```bash
-cd ~/work/gotsx && go run ./cmd/gotsx dev shop -addr :3000
+make dev-shop          # from the repo root → http://localhost:3000
+SHOP_NOLAG=1 …         # disable the simulated backend latency
 ```
 
-## 覆盖的能力
+## What it covers
 
-| 场景 | 怎么实现 |
+| Scenario | How |
 |---|---|
-| 首页 / 8 大分类 / 搜索 / 排序 / 分页 | 文件路由 + 服务端渲染; 192 个商品, `catalog.list(cat,q,sort,page)` 一个宿主方法搞定筛选排序分页 |
-| 商品详情 + 规格 + 评价 | 服务端渲染, 评价由 Go 按商品 id 稳定生成 |
-| 限时闪购 + 倒计时 | 服务端传剩余毫秒, `Countdown` 岛用 `setInterval` 每秒递减 |
-| 加入购物车 | `AddToCart` 岛: 规格必选校验(客户端) + 库存校验(**服务端为准**) + 数量步进 |
-| 购物车角标实时更新 | 跨岛事件 `emit("cart:changed")` → 头部 `CartBadge` 岛 `on(...)` 接收 |
-| 购物车增删改 | 金额**全部由 Go 计算**(小计/运费/免邮差额/合计), 岛只展示与发指令 |
-| 心愿单 | `WishButton` 岛; 服务端持久化, 刷新后 SSR 出 ❤️ |
-| 结算下单 | 表单校验在 Go action(姓名/手机号正则/地址), 岛展示字段级错误; 成功后 SPA 跳订单页 |
-| 订单列表 / 详情 | 会话隔离, 每个 sid 一份订单 |
-| 会话 | `Before` 钩子种 `sid` cookie, 进 `PageProps.Cookies`; 购物车/心愿单/订单都按 sid 隔离 |
+| Home / 8 categories / search / sort / pagination | file routing + SSR; 192 products; one host method `catalog.listCards(cat, q, sort, page)` does filtering, sorting and paging |
+| Product page with variants and reviews | server-rendered; reviews are generated deterministically per product id in Go |
+| Flash sale with countdown | the server passes the remaining milliseconds, the `Countdown` island ticks with `setInterval` |
+| Add to cart | `AddToCart` island: variant selection check (client) + stock check (**server wins**) + quantity stepper |
+| Live cart badge | cross-island event `emit("cart:changed")` → the header `CartBadge` island listens with `on(...)` |
+| Cart edits | every amount (subtotal / shipping / free-shipping gap / total) is **computed in Go**; the island only displays and sends commands |
+| Wishlist | `WishButton` island; persisted per session on the server, so a reload SSRs the filled heart |
+| Checkout | form validation in a Go action (name / international phone / address), field-level errors in the island; success navigates (SPA) to the order page |
+| Orders list / detail | session-scoped: one order list per `sid` |
+| Sessions | the `Before` hook sets the `sid` cookie, which reaches pages through `PageProps.Cookies`; cart, wishlist and orders are keyed by it |
+| i18n | `Options.I18n` in URL-prefix mode: `/` is English (default), `/zh/...` is Chinese; server pages use `t / tv / plural`, islands receive the locale as a prop and use the same builtins (the active catalog is injected client-side) |
+| SEO / PWA | per-page title / description / canonical / OpenGraph, JSON-LD (`WebSite` + `Product`), `sitemap.xml`, `robots.txt`, manifest, server-generated SVG product images |
 
-## 架构要点(企业级关注的)
+## Layout
 
-- **写操作全在 Go**: 加购/改数量/下单/心愿单是普通 `http.HandlerFunc`(`main.go` 的 `Actions`), 方言只读不写。这是关键的信任边界——库存、价格、订单一致性由 Go 保证, 客户端改不了。
-- **金额只在服务端算**: 岛从不做价格运算, 只回显 Go 返回的 `*Fmt` 字符串。防篡改, 也避免两端算法漂移。
-- **宿主模块 = 领域层**: `catalog / cart / wish / orders / intl` 五个 Go 模块, 换成数据库是实现细节, 方言侧的类型和调用不变。
-- **一次整页加载**: 全站 SPA(拉 HTML → morph), 岛按 DOM 同一性存活; 头部购物车角标跨页不重置。
-- **会话隔离**: 内存态按 sid 分桶, 换 Redis/DB 只动宿主。
+- `app/pages/` — routes: `index`, `c/[cat]`, `p/[id]`, `search`, `cart`, `checkout`, `orders/index`, `orders/[id]`
+- `app/components/` — `Layout` (document, header, nav, footer), `Listing` (grid + sort + pager)
+- `app/islands/` — `AddToCart`, `CartBadge`, `CartPage`, `CheckoutForm`, `Countdown`, `Feed`, `LocaleSwitch`, `ProductGallery`, `Related`, `WishButton`
+- `app/ui/` — shared pieces compiled to both sides (`CardShell`, `Stars`, `Icon`, …)
+- `host/host.go` — host modules `catalog / cart / wish / orders / intl / site` (in memory behind mutexes; a database would be an implementation detail the dialect never sees)
+- `main.go` — `gotsx.Serve`: routes from `gen/`, the i18n catalog (`messages`, keys grouped by area), and the write actions
 
-## 实测
+## Architecture notes
 
-19 个模块编译 ~0.8s。服务端渲染: 首页(含闪购轨 + 20 卡片 + 22 岛) ~0.25ms, 分类页 ~0.12ms, 商品页 ~0.06ms。
-吞吐: 商品页 ~13.5k req/s(p99 19ms), 首页 ~4.8k req/s(p99 66ms, 页大 34KB)。客户端每个岛 < 1KB。
-
-浏览器全链路验证(`scratchpad/pw/shop.mjs`): 倒计时走动、心愿单点亮并持久化、搜索、价格排序正确、未选规格拦截、库存校验、加购后角标跨岛更新为 2、购物车改数量金额服务端重算、空表单三处字段校验、下单成功跳转、会话隔离、全程 1 次整页加载、404。
+- **Writes live in Go**: add-to-cart, quantity changes, checkout and wishlist are plain `http.HandlerFunc`s (`Actions` in `main.go`); the dialect reads, it never writes. Stock, prices and order consistency are guaranteed by Go — the client cannot alter them.
+- **Money is only computed on the server**: islands never do price arithmetic, they echo the `*Fmt` strings Go returns.
+- **Host modules are the domain layer**: swapping the in-memory stores for Redis / a database touches only `host/`.
+- **One full page load**: the whole site navigates as a SPA (fetch HTML → morph); islands survive by DOM identity, so the header cart badge keeps its state across pages.

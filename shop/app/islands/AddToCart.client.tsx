@@ -2,7 +2,7 @@ import { useState, emit } from "gotsx";
 import type { Variant } from "host:catalog";
 import Icon from "../ui/Icon";
 
-export default function AddToCart({ id, variants, stock }: { id: string; variants: Variant[]; stock: number }) {
+export default function AddToCart({ id, variants, stock, locale = "" }: { id: string; variants: Variant[]; stock: number; locale?: string }) {
   const [sel, setSel] = useState<string[]>([]);
   const [qty, setQty] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -13,7 +13,7 @@ export default function AddToCart({ id, variants, stock }: { id: string; variant
   const add = async () => {
     if (chosen !== variants.length) {
       setGood(false);
-      setMsg("请先选择完整规格");
+      setMsg(t(locale, "add.pick"));
       return;
     }
     setBusy(true);
@@ -23,7 +23,7 @@ export default function AddToCart({ id, variants, stock }: { id: string; variant
     setBusy(false);
     if (d.ok) {
       setGood(true);
-      setMsg("已加入购物车");
+      setMsg(t(locale, "add.added"));
       emit("cart:changed", { count: d.cart.count });
     } else {
       setGood(false);
@@ -43,18 +43,18 @@ export default function AddToCart({ id, variants, stock }: { id: string; variant
         </div>
       ))}
       <div class="flex items-center gap-4">
-        <span class="text-[13px] text-muted-foreground">数量</span>
+        <span class="text-[13px] text-muted-foreground">{t(locale, "add.qty")}</span>
         <div class="inline-flex items-center rounded-md border border-input bg-background">
-          <button class="btn btn-ghost btn-icon-sm rounded-r-none" disabled={qty <= 1} onClick={() => setQty(qty - 1)} aria-label="减少"><Icon name="minus" /></button>
+          <button class="btn btn-ghost btn-icon-sm rounded-r-none" disabled={qty <= 1} onClick={() => setQty(qty - 1)} aria-label={t(locale, "add.decrease")}><Icon name="minus" /></button>
           <span class="w-10 text-center text-sm font-medium tabular-nums">{qty}</span>
-          <button class="btn btn-ghost btn-icon-sm rounded-l-none" disabled={qty >= stock} onClick={() => setQty(qty + 1)} aria-label="增加"><Icon name="plus" /></button>
+          <button class="btn btn-ghost btn-icon-sm rounded-l-none" disabled={qty >= stock} onClick={() => setQty(qty + 1)} aria-label={t(locale, "add.increase")}><Icon name="plus" /></button>
         </div>
-        <span class="text-xs text-muted-foreground tabular-nums">库存 {stock} 件</span>
+        <span class="text-xs text-muted-foreground tabular-nums">{tv(locale, "add.stock", { n: String(stock) })}</span>
       </div>
       <div class="flex flex-wrap items-center gap-3 pt-1">
         <button class="btn btn-primary btn-lg min-w-44" disabled={busy || stock === 0} onClick={add}>
           {busy ? <Icon name="loader" className="animate-spin" /> : <Icon name="cart" />}
-          {stock === 0 ? "已售罄" : busy ? "加入中…" : "加入购物车"}
+          {stock === 0 ? t(locale, "add.soldout") : busy ? t(locale, "add.adding") : t(locale, "add.button")}
         </button>
         {msg !== "" && <span class={good ? "inline-flex items-center gap-1.5 text-sm font-medium text-success" : "inline-flex items-center gap-1.5 text-sm font-medium text-destructive"}>{good ? <Icon name="check" /> : <Icon name="alert" />}{msg}</span>}
       </div>

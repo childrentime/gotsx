@@ -1,0 +1,7 @@
+{
+  "name": "bench-astro",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "astro build", "start": "node dist/server/entry.mjs" },
+  "dependencies": { "astro": "7.2.10", "@astrojs/node": "11.1.5", "@astrojs/preact": "5.1.2", "preact": "10.28.3" }
+}

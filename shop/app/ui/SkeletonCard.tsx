@@ -1,4 +1,4 @@
-/** 加载骨架卡 */
+/** Loading skeleton card */
 export default function SkeletonCard() {
   return (
     <div class="card overflow-hidden">

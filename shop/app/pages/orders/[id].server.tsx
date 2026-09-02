@@ -4,21 +4,22 @@ import Layout from "../../components/Layout.server";
 import Icon from "../../ui/Icon";
 
 export default function OrderDetail({ params, cookies, locale }: PageProps) {
+  const lc = locale !== "" ? locale : "en";
   const sid = cookies.sid ?? "";
   const o = get(sid, params.id);
   return (
-    <Layout title={`订单 ${o.id}`} sid={sid} locale={locale} active="orders" wide>
+    <Layout title={tv(lc, "order.title", { id: o.id })} sid={sid} locale={lc} active="orders" wide>
       <div class="card mb-5 flex items-center gap-4 px-6 py-5">
         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success"><Icon name="check" className="h-5 w-5" /></span>
         <div>
-          <div class="text-base font-semibold">下单成功</div>
-          <div class="mt-0.5 text-xs text-muted-foreground">订单号 <span class="font-mono">{o.id}</span> · {o.createdFmt} · {o.status}</div>
+          <div class="text-base font-semibold">{t(lc, "order.success")}</div>
+          <div class="mt-0.5 text-xs text-muted-foreground">{t(lc, "order.number")} <span class="font-mono">{o.id}</span> · {o.createdFmt} · {t(lc, "status." + o.status)}</div>
         </div>
-        <a href="/orders" class="btn btn-outline ml-auto hidden sm:inline-flex">查看全部订单</a>
+        <a href="/orders" class="btn btn-outline ml-auto hidden sm:inline-flex">{t(lc, "order.viewAll")}</a>
       </div>
       <div class="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div class="card overflow-hidden">
-          <div class="border-b border-border px-5 py-3 text-sm font-medium">商品清单</div>
+          <div class="border-b border-border px-5 py-3 text-sm font-medium">{t(lc, "order.items")}</div>
           <div class="divide-y divide-border">
             {o.items.map((it) => (
               <div class="flex items-center gap-4 p-4 text-sm">
@@ -35,7 +36,7 @@ export default function OrderDetail({ params, cookies, locale }: PageProps) {
         </div>
         <div class="h-fit space-y-4">
           <div class="card p-5 text-sm">
-            <h2 class="mb-3 flex items-center gap-2 text-base font-semibold"><Icon name="map-pin" />收货信息</h2>
+            <h2 class="mb-3 flex items-center gap-2 text-base font-semibold"><Icon name="map-pin" />{t(lc, "order.shipping")}</h2>
             <div class="space-y-1.5 text-muted-foreground">
               <div><span class="font-medium text-foreground">{o.name}</span> · {o.phone}</div>
               <div class="leading-6">{o.address}</div>
@@ -43,10 +44,10 @@ export default function OrderDetail({ params, cookies, locale }: PageProps) {
           </div>
           <div class="card p-5">
             <div class="flex items-baseline justify-between">
-              <span class="text-sm text-muted-foreground">实付金额</span>
+              <span class="text-sm text-muted-foreground">{t(lc, "order.paid")}</span>
               <span class="text-2xl font-semibold tracking-tight tabular-nums">{o.totalFmt}</span>
             </div>
-            <a href="/" class="btn btn-primary mt-4 w-full">继续购物</a>
+            <a href="/" class="btn btn-primary mt-4 w-full">{t(lc, "order.continue")}</a>
           </div>
         </div>
       </div>

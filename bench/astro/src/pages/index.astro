@@ -1,0 +1,33 @@
+---
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import Counter from "../components/Counter";
+type Product = { id: string; title: string; brand: string; desc: string; price: number; tags: string[]; rating: number };
+// read at request time relative to the working directory: the built entry lives in dist/, not src/
+const items: Product[] = JSON.parse(readFileSync(join(process.cwd(), "src", "products.json"), "utf8"));
+const css = readFileSync(join(process.cwd(), "src", "shared.css"), "utf8");
+const money = (c: number) => `$${Math.floor(c / 100)}.${String(c % 100).padStart(2, "0")}`;
+---
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Bench · astro</title><style set:html={css}></style></head>
+  <body>
+    <header><strong>bench · astro</strong><Counter client:load start={0} /></header>
+    <main>
+      <h1>Products</h1>
+      <p class="muted">{items.length} products</p>
+      <div class="grid">
+        {items.map((p) => (
+          <article class="card">
+            <h2>{p.title}</h2>
+            <p class="muted">{p.brand} · {p.desc}</p>
+            <div class="row">
+              {p.tags.map((t) => <span class="chip">{t}</span>)}
+              <span class="price">{money(p.price)}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </main>
+    <footer class="muted">rendered by astro</footer>
+  </body>
+</html>

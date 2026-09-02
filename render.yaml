@@ -1,0 +1,12 @@
+# Render blueprint: deploys the shop demo from the Dockerfile. https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: gotsx-shop
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP
+        value: shop

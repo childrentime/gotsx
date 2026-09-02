@@ -41,7 +41,7 @@ export default function UserModal() {
     if (d.ok) {
       setOpen(false);
       emit("admin:changed", {});
-      emit("admin:toast", { msg: isEdit ? "已保存修改" : "已创建用户", kind: "ok" });
+      emit("admin:toast", { msg: isEdit ? "Changes saved" : "User created", kind: "ok" });
     } else {
       setErrs(d.errors);
     }
@@ -56,53 +56,53 @@ export default function UserModal() {
         <div class="card pop-in w-full max-w-md p-6 shadow-lg" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
           <div class="mb-5 flex items-start justify-between">
             <div>
-              <h2 class="text-base font-semibold tracking-tight">{id !== "" ? "编辑用户" : "新建用户"}</h2>
-              <p class="mt-1 text-sm text-muted-foreground">{id !== "" ? "修改后保存, 服务端会再次校验。" : "填写基本信息, 邮箱需唯一。"}</p>
+              <h2 class="text-base font-semibold tracking-tight">{id !== "" ? "Edit user" : "New user"}</h2>
+              <p class="mt-1 text-sm text-muted-foreground">{id !== "" ? "Save your changes; the server validates again." : "Fill in the basics; the email must be unique."}</p>
             </div>
-            <button class="btn btn-ghost btn-icon-sm -mr-2 -mt-1 text-muted-foreground" aria-label="关闭" onClick={() => setOpen(false)}><Icon name="x" /></button>
+            <button class="btn btn-ghost btn-icon-sm -mr-2 -mt-1 text-muted-foreground" aria-label="Close" onClick={() => setOpen(false)}><Icon name="x" /></button>
           </div>
           {errs._ !== undefined && <div class="mb-4 flex items-center gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive"><Icon name="alert" />{errs._}</div>}
           <div class="space-y-4">
             <div class="space-y-2">
-              <label class="label">姓名</label>
+              <label class="label">Name</label>
               <input class={field(errs.name !== undefined)} value={name} onInput={(e) => setName(e.target.value)} />
               {errs.name !== undefined && <p class="text-xs text-destructive">{errs.name}</p>}
             </div>
             <div class="space-y-2">
-              <label class="label">邮箱</label>
+              <label class="label">Email</label>
               <input class={field(errs.email !== undefined)} value={email} onInput={(e) => setEmail(e.target.value)} />
               {errs.email !== undefined && <p class="text-xs text-destructive">{errs.email}</p>}
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div class="space-y-2">
-                <label class="label">角色</label>
+                <label class="label">Role</label>
                 <select class={select(errs.role !== undefined)} value={role} onChange={(e) => setRole(e.target.value)}>
-                  <option value="admin">管理员</option>
-                  <option value="editor">编辑</option>
-                  <option value="viewer">只读</option>
+                  <option value="admin">Admin</option>
+                  <option value="editor">Editor</option>
+                  <option value="viewer">Viewer</option>
                 </select>
               </div>
               <div class="space-y-2">
-                <label class="label">部门</label>
+                <label class="label">Department</label>
                 <input class={field(errs.dept !== undefined)} value={dept} onInput={(e) => setDept(e.target.value)} />
                 {errs.dept !== undefined && <p class="text-xs text-destructive">{errs.dept}</p>}
               </div>
             </div>
             {id !== "" && (
               <div class="space-y-2">
-                <label class="label">状态</label>
+                <label class="label">Status</label>
                 <select class={select(false)} value={status} onChange={(e) => setStatus(e.target.value)}>
-                  <option value="active">启用</option>
-                  <option value="disabled">禁用</option>
+                  <option value="active">Active</option>
+                  <option value="disabled">Disabled</option>
                 </select>
               </div>
             )}
           </div>
           <div class="mt-6 flex justify-end gap-2">
-            <button class="btn btn-outline" onClick={() => setOpen(false)}>取消</button>
+            <button class="btn btn-outline" onClick={() => setOpen(false)}>Cancel</button>
             <button class="btn btn-primary" disabled={busy} onClick={save}>
               {busy && <Icon name="spinner" cls="icon animate-spin" />}
-              保存
+              Save
             </button>
           </div>
         </div>

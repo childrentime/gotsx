@@ -4,6 +4,7 @@ package compiler
 
 import (
 	"fmt"
+	"html"
 	"strconv"
 	"strings"
 )
@@ -1586,7 +1587,7 @@ func (g *goGen) toNode(e Expr, reactive bool) string {
 	case *JSXElem:
 		return g.jsxElem(x)
 	case *JSXFrag:
-		return "gotsx.Frag(" + g.children(x.Children) + ")"
+		return g.childrenNode(x.Children)
 	case *JSXText:
 		s := normalizeJSXText(x.Text)
 		if s == "" {
@@ -1659,14 +1660,7 @@ func (g *goGen) jsxElem(x *JSXElem) string {
 				fb = g.toNode(a.Val, false)
 			}
 		}
-		kids := g.children(x.Children)
-		if strings.Contains(kids, ", ") {
-			kids = "gotsx.Frag(" + kids + ")"
-		}
-		if kids == "" {
-			kids = "nil"
-		}
-		return "gotsx.Suspense(" + fb + ", func() gotsx.Node { return " + kids + " })"
+		return "gotsx.Suspense(" + fb + ", func() gotsx.Node { return " + g.childrenNode(x.Children) + " })"
 	}
 	if x.Comp != nil {
 		comp := x.Comp.Comp
@@ -1683,50 +1677,251 @@ func (g *goGen) jsxElem(x *JSXElem) string {
 			fs = append(fs, f.Go+": "+g.conv(a.Val, f.Type))
 		}
 		if len(x.Children) > 0 {
-			kids := g.children(x.Children)
-			if strings.Contains(kids, ", ") {
-				kids = "gotsx.Frag(" + kids + ")"
-			}
-			if kids == "" {
-				kids = "nil"
-			}
-			fs = append(fs, "Children: "+kids)
+			fs = append(fs, "Children: "+g.childrenNode(x.Children))
 		}
 		return x.Comp.Go + "(" + comp.Props.GoName + "{" + strings.Join(fs, ", ") + "})"
 	}
-	var attrs []string
+	w := &htmlWriter{g: g}
+	w.elem(x)
+	return w.closure()
+}
+
+// ---------- 流式写入: 元素编成对 _ctx 的顺序写入, 静态 HTML 合并成一个字符串(templ 的做法), 每个组件只有一个闭包 ----------
+
+var voidTags = map[string]bool{"area": true, "base": true, "br": true, "col": true, "embed": true, "hr": true, "img": true, "input": true, "link": true, "meta": true, "source": true, "track": true, "wbr": true}
+
+type htmlWriter struct {
+	g     *goGen
+	raw   strings.Builder // 待写出的静态 HTML(编译期已转义)
+	stmts []string
+}
+
+func (w *htmlWriter) text(s string) { w.raw.WriteString(s) }
+func (w *htmlWriter) flush() {
+	if w.raw.Len() > 0 {
+		w.stmts = append(w.stmts, "_ctx.W("+strconv.Quote(w.raw.String())+")")
+		w.raw.Reset()
+	}
+}
+func (w *htmlWriter) stmt(s string) {
+	w.flush()
+	w.stmts = append(w.stmts, s)
+}
+
+// closure: 收尾成一个 gotsx.Node 字面量
+func (w *htmlWriter) closure() string {
+	w.flush()
+	if len(w.stmts) == 0 {
+		return "gotsx.Node(nil)"
+	}
+	ind := strings.Repeat("\t", w.g.ind+1)
+	return "func(_ctx *gotsx.Ctx) {\n" + ind + strings.Join(w.stmts, "\n"+ind) + "\n" + strings.Repeat("\t", w.g.ind) + "}"
+}
+
+func (w *htmlWriter) elem(x *JSXElem) {
+	if x.Comp != nil {
+		w.stmt("_ctx.N(" + w.g.jsxElem(x) + ")")
+		return
+	}
+	g := w.g
+	w.text("<" + x.Tag)
 	for _, a := range x.Attrs {
 		if a.Name == "key" || strings.HasPrefix(a.Name, "on") || a.Name == "dangerouslySetInnerHTML" {
 			continue
 		}
-		name := strconv.Quote(a.Name)
 		if a.Val == nil {
-			attrs = append(attrs, "gotsx.AB("+name+", true)")
+			w.text(" " + a.Name)
 			continue
 		}
+		if s, ok := a.Val.(*StrLit); ok {
+			w.text(" " + a.Name + `="` + html.EscapeString(s.Val) + `"`)
+			continue
+		}
+		name := strconv.Quote(a.Name)
 		vt := unopt(a.Val.T())
 		switch {
 		case isBool(vt) && (strings.HasPrefix(a.Name, "aria-") || strings.HasPrefix(a.Name, "data-")):
-			attrs = append(attrs, "gotsx.A("+name+", gotsx.Str("+g.expr(a.Val)+"))")
+			w.stmt("_ctx.Attr(" + name + ", gotsx.Str(" + g.expr(a.Val) + "))")
 		case isBool(vt):
-			attrs = append(attrs, "gotsx.AB("+name+", "+g.expr(a.Val)+")")
+			w.stmt("if " + g.expr(a.Val) + " {\n\t\t_ctx.W(" + strconv.Quote(" "+a.Name) + ")\n\t}")
 		case isNumber(vt):
-			attrs = append(attrs, "gotsx.AN("+name+", "+g.expr(a.Val)+")")
+			w.stmt("_ctx.Attr(" + name + ", gotsx.Num(" + g.expr(a.Val) + "))")
 		case isString(vt):
-			attrs = append(attrs, "gotsx.A("+name+", "+g.expr(a.Val)+")")
+			w.stmt("_ctx.Attr(" + name + ", " + g.expr(a.Val) + ")")
 		default:
-			attrs = append(attrs, "gotsx.A("+name+", gotsx.Str("+g.expr(a.Val)+"))")
+			w.stmt("_ctx.Attr(" + name + ", gotsx.Str(" + g.expr(a.Val) + "))")
 		}
 	}
-	as := "nil"
-	if len(attrs) > 0 {
-		as = "[]gotsx.Attr{" + strings.Join(attrs, ", ") + "}"
+	w.text(">")
+	if voidTags[x.Tag] {
+		return
 	}
-	kids := g.children(x.Children)
-	if kids != "" {
-		kids = ", " + kids
+	w.kids(x.Children)
+	if x.Tag == "head" || x.Tag == "body" {
+		w.stmt("_ctx.Close(" + strconv.Quote(x.Tag) + ")")
+	} else {
+		w.text("</" + x.Tag + ">")
 	}
-	return "gotsx.El(" + strconv.Quote(x.Tag) + ", " + as + kids + ")"
+}
+
+func (w *htmlWriter) kids(kids []Expr) {
+	for _, k := range kids {
+		switch x := k.(type) {
+		case *JSXText:
+			w.text(html.EscapeString(normalizeJSXText(x.Text)))
+		case *JSXExprChild:
+			if x.X != nil {
+				w.child(x.X, x.Reactive)
+			}
+		default:
+			w.child(k, false)
+		}
+	}
+}
+
+// child: 子节点位置的表达式 —— JSX 继续内联, 文本就地转义, 其它节点表达式调用
+func (w *htmlWriter) child(e Expr, reactive bool) {
+	g := w.g
+	for {
+		p, ok := e.(*Paren)
+		if !ok {
+			break
+		}
+		e = p.X
+	}
+	switch x := e.(type) {
+	case *JSXElem:
+		w.elem(x)
+		return
+	case *JSXFrag:
+		w.kids(x.Children)
+		return
+	case *JSXText:
+		w.text(html.EscapeString(normalizeJSXText(x.Text)))
+		return
+	case *NullLit, *BoolLit:
+		return
+	case *StrLit:
+		w.text(html.EscapeString(x.Val))
+		return
+	}
+	if w.inlineMap(e, reactive) {
+		return
+	}
+	t := unopt(e.T())
+	switch tt := t.(type) {
+	case *Prim:
+		switch tt {
+		case TNode:
+			w.stmt("_ctx.N(" + g.expr(e) + ")")
+		case TString:
+			if reactive {
+				w.stmt("_ctx.Dyn(" + g.expr(e) + ")")
+			} else {
+				w.stmt("_ctx.Esc(" + g.expr(e) + ")")
+			}
+		case TNumber:
+			if reactive {
+				w.stmt("_ctx.Dyn(gotsx.Num(" + g.expr(e) + "))")
+			} else {
+				w.stmt("_ctx.Esc(gotsx.Num(" + g.expr(e) + "))")
+			}
+		case TBool, TUndef, TVoid:
+		default:
+			w.stmt("_ctx.Esc(gotsx.Str(" + g.expr(e) + "))")
+		}
+		return
+	case *ArrT:
+		if isNode(tt.Elem) {
+			if reactive {
+				w.stmt("gotsx.Nodes(" + g.expr(e) + ")(_ctx)")
+			} else {
+				w.stmt("gotsx.NodesPlain(" + g.expr(e) + ")(_ctx)")
+			}
+		} else {
+			w.stmt("_ctx.Esc(gotsx.JoinAny(" + g.expr(e) + `, ""))`)
+		}
+		return
+	}
+	g.fail(e.GetPos(), "cannot use %s as a JSX child", t)
+}
+
+// inlineMap: {xs.map((x) => <li>…</li>)} 直接编成 for 循环写入, 不构造 []Node 和每项的闭包。
+// 只处理箭头函数是表达式体(或只有一个 return)且参数是普通标识符的情况; 其它走通用路径。
+func (w *htmlWriter) inlineMap(e Expr, reactive bool) bool {
+	call, ok := e.(*Call)
+	if !ok || call.Kind != "builtin:map" || len(call.Args) != 1 {
+		return false
+	}
+	m, ok := call.Fn.(*Member)
+	if !ok {
+		return false
+	}
+	if at, ok := unopt(call.T()).(*ArrT); !ok || !isNode(at.Elem) {
+		return false
+	}
+	if _, ok := unopt(m.X.T()).(*ArrT); !ok {
+		return false
+	}
+	a, ok := call.Args[0].(*Arrow)
+	if !ok || a.Async || len(a.Params) > 2 {
+		return false
+	}
+	body := a.ExprBody
+	if body == nil {
+		if a.Body == nil || len(a.Body.Stmts) != 1 {
+			return false
+		}
+		r, ok := a.Body.Stmts[0].(*ReturnStmt)
+		if !ok || r.X == nil {
+			return false
+		}
+		body = r.X
+	}
+	for _, p := range a.Params {
+		if p.Pat.Kind != PatIdent {
+			return false
+		}
+	}
+	g := w.g
+	if reactive {
+		w.stmt("_ctx.ListStart()")
+	}
+	item := "_"
+	if len(a.Params) >= 1 {
+		item = a.Params[0].Pat.Sym.Go
+	}
+	switch {
+	case len(a.Params) == 2:
+		idx := a.Params[1].Pat.Sym.Go
+		w.stmt("for _i, " + item + " := range " + g.expr(m.X) + " {")
+		w.stmt("\t" + idx + " := float64(_i)")
+		w.stmt("\t_ = " + idx)
+		w.stmt("\t_ = " + item)
+	case len(a.Params) == 1:
+		w.stmt("for _, " + item + " := range " + g.expr(m.X) + " {")
+		w.stmt("\t_ = " + item)
+	default: // () => <Skeleton />: 只按长度重复
+		w.stmt("for range " + g.expr(m.X) + " {")
+	}
+	inner := &htmlWriter{g: g}
+	inner.child(body, false)
+	inner.flush()
+	for _, s := range inner.stmts {
+		w.stmt("\t" + s)
+	}
+	w.stmt("}")
+	if reactive {
+		w.stmt("_ctx.ListEnd()")
+	}
+	return true
+}
+
+// childrenNode: 一组子节点 → 一个 Node(组件的 children / fragment)
+func (g *goGen) childrenNode(kids []Expr) string {
+	w := &htmlWriter{g: g}
+	w.kids(kids)
+	return w.closure()
 }
 
 // JSX 文本的空白规则(与 React/Babel 一致): 多行时按行 trim, 空行丢弃, 用单个空格拼接

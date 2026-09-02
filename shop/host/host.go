@@ -1,5 +1,5 @@
-// Package host: 电商应用的宿主模块 —— 目录 / 购物车 / 心愿单 / 订单 / 货币格式化。
-// 全部在内存(带互斥锁), 换成数据库是宿主实现细节, 方言侧看不见。
+// Package host is the shop's host module: catalog / cart / wishlist / orders / formatting.
+// Everything is in memory (behind mutexes); swapping in a database is a host implementation detail the dialect never sees.
 package host
 
 import (
@@ -17,7 +17,7 @@ import (
 	gotsx "github.com/childrentime/gotsx/runtime"
 )
 
-// lag: 模拟后端 I/O 延迟, 让加载态/骨架屏是真的在等一个"接口"。SHOP_NOLAG=1 关闭。
+// lag simulates backend I/O latency so loading states / skeletons wait for a real "API". SHOP_NOLAG=1 disables it.
 var lagOn = os.Getenv("SHOP_NOLAG") == ""
 var lagMu sync.Mutex
 
@@ -31,7 +31,7 @@ func lag(minMs, maxMs int) {
 	time.Sleep(time.Duration(d) * time.Millisecond)
 }
 
-// ---------- 类型 ----------
+// ---------- types ----------
 
 type Category struct {
 	Key   string `json:"key"`
@@ -49,7 +49,7 @@ type Product struct {
 	Title    string    `json:"title"`
 	Emoji    string    `json:"emoji"`
 	Hue      int       `json:"hue"`
-	Price    int       `json:"price"` // 分
+	Price    int       `json:"price"` // cents
 	Orig     int       `json:"orig"`
 	Sold     int       `json:"sold"`
 	Rating   float64   `json:"rating"`
@@ -111,7 +111,7 @@ type Order struct {
 	Status     string     `json:"status"`
 }
 
-// ---------- 目录 ----------
+// ---------- catalog ----------
 
 type CatalogModule struct {
 	products []Product
@@ -128,7 +128,7 @@ func (c *CatalogModule) CatLabel(key string) string {
 			return x.Label
 		}
 	}
-	return "全部"
+	return "All"
 }
 
 func (c *CatalogModule) FlashLeftMs() int { return int(time.Until(c.flashEnd).Milliseconds()) }
@@ -148,7 +148,7 @@ func (c *CatalogModule) Get(id string) (Product, error) {
 	if p, ok := c.byID[id]; ok {
 		return *p, nil
 	}
-	return Product{}, fmt.Errorf("%w: 商品 %s", gotsx.ErrNotFound, id)
+	return Product{}, fmt.Errorf("%w: product %s", gotsx.ErrNotFound, id)
 }
 
 const pageSize = 20
@@ -200,15 +200,17 @@ func (c *CatalogModule) List(cat, q, sortBy string, page int) Paged {
 }
 
 var reviewPool = []string{
-	"质量比想象中好, 物流也快, 值得回购!",
-	"和图片一致, 做工不错, 家人很喜欢。",
-	"性价比很高, 已经推荐给同事了。",
-	"包装仔细, 客服态度好, 五星好评。",
-	"用了一周才来评价, 没有任何问题。",
-	"比实体店便宜太多, 就是等得有点久。",
-	"第二次购买了, 一如既往的好。",
-	"细节处理得可以, 这个价格没什么可挑的。",
+	"Better quality than I expected, and it shipped fast. Would buy again.",
+	"Exactly as pictured, solid build. The whole family likes it.",
+	"Great value for the price — already recommended it to a coworker.",
+	"Carefully packed, helpful support. Five stars.",
+	"Waited a week before reviewing: no issues at all.",
+	"Much cheaper than in stores, delivery just took a little while.",
+	"Second time ordering, as good as the first.",
+	"Nice attention to detail; nothing to complain about at this price.",
 }
+
+var reviewerNames = []string{"Maya", "Liam", "Sofia", "Noah", "Ava", "Ethan", "Chloe", "Lucas", "Mia", "Oliver", "Zoe", "Leo"}
 
 func (c *CatalogModule) ProductReviews(id string) []Review {
 	lag(160, 320)
@@ -225,7 +227,7 @@ func (c *CatalogModule) ProductReviews(id string) []Review {
 			stars = 3
 		}
 		out[i] = Review{
-			User:  fmt.Sprintf("用户%c***%d", 'a'+r.Intn(26), r.Intn(90)+10),
+			User:  fmt.Sprintf("%s %c.", reviewerNames[r.Intn(len(reviewerNames))], 'A'+r.Intn(26)),
 			Stars: stars,
 			Text:  reviewPool[r.Intn(len(reviewPool))],
 			Date:  time.Now().AddDate(0, 0, -r.Intn(60)).Format("2006-01-02"),
@@ -242,7 +244,7 @@ func hash(s string) uint32 {
 	return h
 }
 
-// ---------- 购物车 ----------
+// ---------- cart ----------
 
 type cartLine struct {
 	ID      string
@@ -288,7 +290,7 @@ func (m *CartModule) view(sid string) CartView {
 	if v.Empty {
 		v.ShippingFmt = "—"
 	} else if ship == 0 {
-		v.ShippingFmt = "免运费"
+		v.ShippingFmt = "Free"
 	} else {
 		v.ShippingFmt = Intl.FmtPrice(ship)
 	}
@@ -309,7 +311,7 @@ func (m *CartModule) Add(sid, id, variant string, qty int) (CartView, error) {
 	defer m.mu.Unlock()
 	p, ok := Catalog.byID[id]
 	if !ok {
-		return CartView{}, fmt.Errorf("%w: 商品 %s", gotsx.ErrNotFound, id)
+		return CartView{}, fmt.Errorf("%w: product %s", gotsx.ErrNotFound, id)
 	}
 	if qty < 1 {
 		qty = 1
@@ -321,7 +323,7 @@ func (m *CartModule) Add(sid, id, variant string, qty int) (CartView, error) {
 		}
 	}
 	if have+qty > p.Stock {
-		return CartView{}, fmt.Errorf("库存不足: 仅剩 %d 件", p.Stock)
+		return CartView{}, fmt.Errorf("Only %d left in stock", p.Stock)
 	}
 	lines := m.carts[sid]
 	found := false
@@ -364,7 +366,7 @@ func (m *CartModule) SetQty(sid, id, variant string, qty int) CartView {
 
 func (m *CartModule) clear(sid string) { delete(m.carts, sid) }
 
-// ---------- 心愿单 ----------
+// ---------- wishlist ----------
 
 type WishModule struct {
 	mu   sync.Mutex
@@ -401,7 +403,7 @@ func (m *WishModule) Toggle(sid, id string) bool {
 	return true
 }
 
-// ---------- 订单 ----------
+// ---------- orders ----------
 
 type OrdersModule struct {
 	mu   sync.Mutex
@@ -427,22 +429,22 @@ func (m *OrdersModule) Get(sid, id string) (Order, error) {
 			return o, nil
 		}
 	}
-	return Order{}, fmt.Errorf("%w: 订单 %s", gotsx.ErrNotFound, id)
+	return Order{}, fmt.Errorf("%w: order %s", gotsx.ErrNotFound, id)
 }
 
-// Place 只给 Go 的 action 用 —— 写操作不经过方言
+// Place is only called from Go actions — writes never go through the dialect
 func (m *OrdersModule) Place(sid, name, phone, address string) (Order, error) {
 	lag(500, 900)
 	cv := Cart.View(sid)
 	if cv.Empty {
-		return Order{}, fmt.Errorf("购物车是空的")
+		return Order{}, fmt.Errorf("Your cart is empty")
 	}
 	m.mu.Lock()
 	m.seq++
 	o := Order{
 		ID: fmt.Sprintf("ORD%06d", m.seq), Items: cv.Items, Count: cv.Count, TotalFmt: cv.TotalFmt,
 		Name: name, Phone: phone, Address: address,
-		CreatedFmt: time.Now().Format("2006-01-02 15:04"), Status: "已支付, 待发货",
+		CreatedFmt: time.Now().Format("2006-01-02 15:04"), Status: "paid", // status is a key, translated by the UI (status.paid)
 	}
 	if m.data == nil {
 		m.data = map[string][]Order{}
@@ -455,7 +457,7 @@ func (m *OrdersModule) Place(sid, name, phone, address string) (Order, error) {
 	return o, nil
 }
 
-// ---------- 格式化 ----------
+// ---------- site / formatting ----------
 
 type SiteModule struct{}
 
@@ -466,7 +468,7 @@ func siteBase() string {
 	return "https://shop.example.com"
 }
 
-func (SiteModule) Name() string    { return "gomu 好物商城" }
+func (SiteModule) Name() string    { return "gomu" }
 func (SiteModule) BaseUrl() string { return siteBase() }
 func (SiteModule) Url(path string) string {
 	if path == "" {
@@ -478,7 +480,7 @@ func (SiteModule) Url(path string) string {
 	return siteBase() + path
 }
 
-// SitemapURLs: 首页 + 分类 + 全部商品(供 /sitemap.xml)
+// SitemapURLs: home + categories + every product (for /sitemap.xml)
 func (SiteModule) SitemapURLs() []string {
 	out := []string{siteBase() + "/"}
 	for _, c := range Catalog.cats {
@@ -498,20 +500,17 @@ func (IntlModule) FmtPrice(cents int) string {
 		sign = "-"
 		cents = -cents
 	}
-	return fmt.Sprintf("%s¥%d.%02d", sign, cents/100, cents%100)
+	return fmt.Sprintf("%s$%d.%02d", sign, cents/100, cents%100)
 }
 
 func (IntlModule) FmtSold(n int) string {
-	if n >= 10000 {
-		return fmt.Sprintf("%.1f万", float64(n)/10000)
-	}
 	if n >= 1000 {
 		return fmt.Sprintf("%d.%dk", n/1000, (n%1000)/100)
 	}
 	return fmt.Sprintf("%d", n)
 }
 
-// ---------- 造数据 ----------
+// ---------- seed data ----------
 
 type catSpec struct {
 	key, label, emoji string
@@ -524,25 +523,25 @@ type itemSpec struct {
 }
 
 var specs = []catSpec{
-	{"digital", "数码", "📱", 210, []Variant{{Name: "颜色", Options: []string{"曜石黑", "珍珠白", "远峰蓝"}}},
-		[]itemSpec{{"无线蓝牙耳机", "🎧"}, {"智能手表", "⌚"}, {"便携充电宝 20000mAh", "🔋"}, {"蓝牙音箱", "🔊"}, {"桌面手机支架", "📱"}, {"三合一快充数据线", "🔌"}}},
-	{"home", "家居", "🏠", 30, []Variant{{Name: "款式", Options: []string{"北欧风", "简约风", "奶油风"}}},
-		[]itemSpec{{"懒人沙发豆袋", "🛋️"}, {"香薰加湿器", "💨"}, {"遮光窗帘", "🪟"}, {"收纳置物架", "🗄️"}, {"床头小夜灯", "💡"}, {"记忆棉枕头", "🛏️"}}},
-	{"fashion", "服饰", "👗", 330, []Variant{{Name: "颜色", Options: []string{"黑色", "米白", "卡其"}}, {Name: "尺码", Options: []string{"S", "M", "L", "XL"}}},
-		[]itemSpec{{"宽松显瘦卫衣", "🧥"}, {"高腰阔腿裤", "👖"}, {"法式碎花连衣裙", "👗"}, {"百搭老爹鞋", "👟"}, {"渔夫帽", "🧢"}, {"羊毛围巾", "🧣"}}},
-	{"beauty", "美妆", "💄", 300, []Variant{{Name: "色号", Options: []string{"01 豆沙", "02 枫叶", "03 番茄"}}},
-		[]itemSpec{{"哑光丝绒口红", "💄"}, {"水润粉底液", "🧴"}, {"眼影盘 12 色", "🎨"}, {"卸妆膏", "🧼"}, {"玻尿酸面膜", "🧖"}, {"防晒霜 SPF50+", "☀️"}}},
-	{"toys", "玩具", "🧸", 45, nil,
-		[]itemSpec{{"毛绒小熊 60cm", "🧸"}, {"积木火箭 980 颗粒", "🚀"}, {"遥控越野车", "🏎️"}, {"解压魔方", "🧩"}, {"电动泡泡机", "🫧"}, {"恐龙模型套装", "🦖"}}},
-	{"sports", "运动", "🏀", 140, []Variant{{Name: "规格", Options: []string{"标准款", "加重款"}}},
-		[]itemSpec{{"瑜伽垫加厚", "🧘"}, {"跳绳计数款", "🪢"}, {"篮球 7 号", "🏀"}, {"骑行手套", "🧤"}, {"运动水壶 1L", "🚰"}, {"筋膜枪迷你", "💆"}}},
-	{"kitchen", "厨房", "🍳", 20, nil,
-		[]itemSpec{{"不粘平底锅 28cm", "🍳"}, {"厨房剪刀五件套", "✂️"}, {"保鲜盒套装", "🥡"}, {"手动榨汁杯", "🥤"}, {"竹砧板", "🪵"}, {"陶瓷餐盘 4 只装", "🍽️"}}},
-	{"pets", "宠物", "🐾", 260, []Variant{{Name: "口味", Options: []string{"鸡肉", "三文鱼", "牛肉"}}},
-		[]itemSpec{{"猫咪冻干零食", "🐱"}, {"狗狗洁牙棒", "🦴"}, {"宠物自动饮水机", "⛲"}, {"猫抓板窝", "📦"}, {"逗猫棒套装", "🪶"}, {"宠物梳毛器", "🐾"}}},
+	{"digital", "Electronics", "📱", 210, []Variant{{Name: "Color", Options: []string{"Obsidian Black", "Pearl White", "Sierra Blue"}}},
+		[]itemSpec{{"Wireless Earbuds", "🎧"}, {"Smart Watch", "⌚"}, {"20,000mAh Power Bank", "🔋"}, {"Bluetooth Speaker", "🔊"}, {"Desk Phone Stand", "📱"}, {"3-in-1 Fast-Charge Cable", "🔌"}}},
+	{"home", "Home & Living", "🏠", 30, []Variant{{Name: "Style", Options: []string{"Nordic", "Minimal", "Cream"}}},
+		[]itemSpec{{"Bean Bag Lounger", "🛋️"}, {"Aroma Humidifier", "💨"}, {"Blackout Curtains", "🪟"}, {"Storage Shelf", "🗄️"}, {"Bedside Night Light", "💡"}, {"Memory Foam Pillow", "🛏️"}}},
+	{"fashion", "Fashion", "👗", 330, []Variant{{Name: "Color", Options: []string{"Black", "Ivory", "Khaki"}}, {Name: "Size", Options: []string{"S", "M", "L", "XL"}}},
+		[]itemSpec{{"Relaxed-Fit Hoodie", "🧥"}, {"High-Waist Wide-Leg Pants", "👖"}, {"Floral Midi Dress", "👗"}, {"Chunky Sneakers", "👟"}, {"Bucket Hat", "🧢"}, {"Wool Scarf", "🧣"}}},
+	{"beauty", "Beauty", "💄", 300, []Variant{{Name: "Shade", Options: []string{"01 Rosewood", "02 Maple", "03 Tomato"}}},
+		[]itemSpec{{"Matte Velvet Lipstick", "💄"}, {"Hydrating Foundation", "🧴"}, {"12-Shade Eyeshadow Palette", "🎨"}, {"Cleansing Balm", "🧼"}, {"Hyaluronic Sheet Mask", "🧖"}, {"SPF50+ Sunscreen", "☀️"}}},
+	{"toys", "Toys", "🧸", 45, nil,
+		[]itemSpec{{"60cm Plush Bear", "🧸"}, {"980-Piece Rocket Building Set", "🚀"}, {"RC Off-Road Truck", "🏎️"}, {"Fidget Cube", "🧩"}, {"Electric Bubble Machine", "🫧"}, {"Dinosaur Figure Set", "🦖"}}},
+	{"sports", "Sports", "🏀", 140, []Variant{{Name: "Spec", Options: []string{"Standard", "Weighted"}}},
+		[]itemSpec{{"Thick Yoga Mat", "🧘"}, {"Counting Jump Rope", "🪢"}, {"Size 7 Basketball", "🏀"}, {"Cycling Gloves", "🧤"}, {"1L Sports Bottle", "🚰"}, {"Mini Massage Gun", "💆"}}},
+	{"kitchen", "Kitchen", "🍳", 20, nil,
+		[]itemSpec{{"28cm Non-Stick Skillet", "🍳"}, {"5-Piece Kitchen Shears Set", "✂️"}, {"Food Storage Container Set", "🥡"}, {"Manual Juicer Cup", "🥤"}, {"Bamboo Cutting Board", "🪵"}, {"Ceramic Dinner Plates (Set of 4)", "🍽️"}}},
+	{"pets", "Pets", "🐾", 260, []Variant{{Name: "Flavor", Options: []string{"Chicken", "Salmon", "Beef"}}},
+		[]itemSpec{{"Freeze-Dried Cat Treats", "🐱"}, {"Dog Dental Chews", "🦴"}, {"Automatic Pet Water Fountain", "⛲"}, {"Cat Scratcher Bed", "📦"}, {"Cat Wand Toy Set", "🪶"}, {"Pet Grooming Brush", "🐾"}}},
 }
 
-var adjectives = []string{"爆款", "新款升级", "家用高颜值", "便携迷你"}
+var adjectives = []string{"Bestselling", "Upgraded", "Everyday", "Compact"}
 
 func newCatalog() *CatalogModule {
 	r := mrand.New(mrand.NewSource(42))
@@ -567,7 +566,7 @@ func newCatalog() *CatalogModule {
 					Reviews:  50 + r.Intn(5000),
 					Category: cs.key,
 					Stock:    r.Intn(500),
-					Desc:     fmt.Sprintf("%s%s, 精选材质, 工厂直发。7 天无理由退换, 全场满 ¥69 免运费。", adj, it.name),
+					Desc:     fmt.Sprintf("%s %s — carefully sourced materials, shipped straight from the factory. 7-day free returns; free shipping on orders over $69.", adj, it.name),
 					Variants: cs.variants,
 					Gallery:  []string{it.emoji, cs.emoji, "🎁"},
 				}
@@ -597,7 +596,7 @@ func NewSID() string {
 	return hex.EncodeToString(b)
 }
 
-// ---------- 卡片 DTO: 给客户端渲染用, 金额/折扣全部服务端预格式化 ----------
+// ---------- card DTO for client rendering: prices / discounts pre-formatted on the server ----------
 
 type Card struct {
 	ID       string  `json:"id"`
@@ -621,14 +620,14 @@ func toCard(p Product) Card {
 	if p.Orig > 0 {
 		off = int(math.Round((1 - float64(p.Price)/float64(p.Orig)) * 100))
 	}
-	tag := ""
+	tag := "" // a key the UI translates (tag.hot / tag.deal / tag.rated)
 	switch {
 	case p.Sold > 30000:
-		tag = "热销"
+		tag = "hot"
 	case p.Price < 1500:
-		tag = "9.9 特价"
+		tag = "deal"
 	case p.Rating >= 4.8:
-		tag = "好评"
+		tag = "rated"
 	}
 	return Card{
 		ID: p.ID, Title: p.Title, Emoji: p.Emoji, Hue: p.Hue,
@@ -670,7 +669,7 @@ type FeedResult struct {
 	Page    int    `json:"page"`
 }
 
-// Feed: 首页"为你推荐"信息流, 稳定乱序分页
+// Feed: the home page "for you" stream, stable shuffled pagination
 func (c *CatalogModule) Feed(page int) FeedResult {
 	lag(450, 750)
 	all := append([]Product{}, c.products...)
@@ -691,7 +690,7 @@ func (c *CatalogModule) Feed(page int) FeedResult {
 	return FeedResult{Cards: cards(all[a:b]), HasMore: b < len(all) && page < 6, Page: page}
 }
 
-// Related: 同类推荐, 按销量, 排除自身
+// Related: same-category recommendations by sales, excluding the product itself
 func (c *CatalogModule) Related(id string) []Card {
 	lag(400, 650)
 	p, ok := c.byID[id]

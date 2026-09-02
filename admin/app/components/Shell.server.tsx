@@ -5,8 +5,8 @@ import Logout from "../islands/Logout.client";
 
 interface Item { href: string; label: string; icon: string; key: string; }
 const nav: Item[] = [
-  { href: "/", label: "仪表盘", icon: "dashboard", key: "home" },
-  { href: "/users", label: "用户管理", icon: "users", key: "users" },
+  { href: "/", label: "Dashboard", icon: "dashboard", key: "home" },
+  { href: "/users", label: "Users", icon: "users", key: "users" },
 ];
 
 function navCls(active: string, me: string): string {
@@ -17,7 +17,7 @@ function navCls(active: string, me: string): string {
 
 export default function Shell({ title, active = "", name = "", role = "", children }: { title: string; active?: string; name?: string; role?: string; children?: Node }) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -32,14 +32,14 @@ export default function Shell({ title, active = "", name = "", role = "", childr
               <span class="flex h-8 w-8 items-center justify-center rounded-md bg-primary font-mono text-sm font-semibold text-primary-foreground">g</span>
               <span class="flex flex-col leading-tight">
                 <span class="text-sm font-semibold tracking-tight">gotsx admin</span>
-                <span class="text-[11px] text-muted-foreground">后台管理</span>
+                <span class="text-[11px] text-muted-foreground">Back office</span>
               </span>
             </a>
             <nav class="flex-1 space-y-1">
               {nav.map((it) => <a href={it.href} class={navCls(active, it.key)}><Icon name={it.icon} />{it.label}</a>)}
             </nav>
             <div class="separator mb-3"></div>
-            <p class="px-2 text-[11px] leading-5 text-muted-foreground">gotsx 企业示例 · 页面由 Go 渲染 · 交互编译成 signals · 单二进制部署</p>
+            <p class="px-2 text-[11px] leading-5 text-muted-foreground">gotsx enterprise demo · pages rendered by Go · interactions compiled to signals · single-binary deploy</p>
           </aside>
           <div class="flex min-w-0 flex-1 flex-col md:pl-60">
             <header class="page-header flex h-14 items-center justify-between gap-3 px-6">
@@ -54,7 +54,7 @@ export default function Shell({ title, active = "", name = "", role = "", childr
                 <div class="flex items-center gap-3">
                   <div class="hidden text-right sm:block">
                     <div class="text-sm font-medium leading-tight">{name}</div>
-                    <div class="text-[11px] text-muted-foreground">{role === "admin" ? "管理员" : role === "editor" ? "编辑" : "只读"}</div>
+                    <div class="text-[11px] text-muted-foreground">{role === "admin" ? "Admin" : role === "editor" ? "Editor" : "Viewer"}</div>
                   </div>
                   <Avatar name={name} />
                   <Logout />

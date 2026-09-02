@@ -22,16 +22,16 @@ export default function LoginForm() {
     <div class="space-y-4">
       {err !== "" && <div class="flex items-center gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive"><Icon name="alert" />{err}</div>}
       <div class="space-y-2">
-        <label class="label">用户名</label>
+        <label class="label">Username</label>
         <input class="input" value={user} onInput={(e) => setUser(e.target.value)} />
       </div>
       <div class="space-y-2">
-        <label class="label">密码</label>
+        <label class="label">Password</label>
         <input type="password" class="input" value={pass} onInput={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
       </div>
       <button class="btn btn-primary w-full" disabled={busy} onClick={submit}>
         {busy && <Icon name="spinner" cls="icon animate-spin" />}
-        {busy ? "登录中…" : "登录"}
+        {busy ? "Signing in…" : "Sign in"}
       </button>
     </div>
   );

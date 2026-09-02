@@ -224,7 +224,7 @@ func TestKeyedMarkerParity(t *testing.T) {
 export default function C() { const [xs, setXs] = useState<string[]>([]); const [n, setN] = useState(0);
   return <ul>{xs.map((x) => <li key={x}><input /><b>{x}</b>{n > 0 && <i>!</i>}</li>)}</ul>; }`
 	gs, js := compileOne(t, "C.client.tsx", src)
-	if strings.Count(gs, "gotsx.Nodes(") != 1 || strings.Count(js, "G.each(") != 1 {
+	if strings.Count(gs, "_ctx.ListStart(")+strings.Count(gs, "gotsx.Nodes(") != 1 || strings.Count(js, "G.each(") != 1 {
 		t.Errorf("列表标记不一致\n%s\n%s", gs, js)
 	}
 	if strings.Count(gs, "gotsx.If(") != 1 || strings.Count(js, "G.cond(") != 1 {
@@ -244,7 +244,7 @@ export default function P({ params }: PageProps) {
   return <main><Suspense fallback={<i>loading</i>}><b>{models.list().length}</b><em>x</em></Suspense></main>;
 }`
 	gs, _ := compileOne(t, "p.server.tsx", src)
-	for _, w := range []string{`gotsx.Suspense(gotsx.El("i"`, `func() gotsx.Node { return gotsx.Frag(gotsx.El("b"`, "host.Data.Models.List()"} {
+	for _, w := range []string{"gotsx.Suspense(func(_ctx *gotsx.Ctx) {", `_ctx.W("<i>loading</i>")`, "func() gotsx.Node {", `_ctx.W("<b>")`, "host.Data.Models.List()"} {
 		if !strings.Contains(gs, w) {
 			t.Errorf("缺 %s\n%s", w, gs)
 		}

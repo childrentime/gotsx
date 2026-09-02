@@ -157,6 +157,15 @@ The full, searchable syntax table lives in the `site` docs at `/docs/language`.
 
 Live docs site (a static export of the `site` app): **https://childrentime.github.io/gotsx/**
 
+## Benchmarks
+
+`bench/` renders the same 50-product page in **gotsx, Go html/template, Gin, templ, Next.js 16, Astro 7 and Hono (Bun)**
+and measures throughput, latency, memory, cold start, build time, artifact size and the JS a browser downloads — with a
+dependency-free Go load generator, on a GitHub-hosted runner (the **Benchmark** workflow commits `bench/results/`).
+gotsx compiles a page to straight-line Go writes (static HTML merged at compile time, `map` → `for`), so the page
+costs ~15 µs and ~140 allocations in-process and the server runs at templ's speed; see [`bench/README.md`](bench/README.md)
+for the tables and an honest comparison of what each stack is good at.
+
 ## Testing
 
 ```bash

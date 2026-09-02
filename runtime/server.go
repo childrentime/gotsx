@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -90,6 +91,7 @@ type Options struct {
 	// OnClientEvent 开启客户端遥测: 浏览器把 JS 错误 / 页面浏览 上报到 /_gotsx/client-log, 这里接收
 	OnClientEvent func(ClientEvent, *http.Request)
 	I18n          *I18n // 可选国际化: 语言解析 + 客户端目录注入 + hreflang
+	QuietLogs     bool  // 关掉每请求的访问日志(高吞吐服务或自带日志中间件时)
 }
 
 // ClientEvent 是浏览器上报的一条遥测(错误 / 页面浏览)
@@ -148,7 +150,14 @@ func (s *server) publicFS() fs.FS {
 	return os.DirFS(s.opt.PublicDir)
 }
 
-func Serve(opt Options) error {
+// Handler builds the complete gotsx HTTP handler (pages, islands, actions, middleware chain) without starting a
+// server — mount it in your own http.Server or mux, or drive it from tests / benchmarks with httptest.
+func Handler(opt Options) http.Handler {
+	h, _ := newServer(opt)
+	return h
+}
+
+func newServer(opt Options) (http.Handler, *server) {
 	s := &server{opt: opt}
 	s.bootID = randomHex(6)
 	configureI18n(opt.I18n)
@@ -202,9 +211,15 @@ func Serve(opt Options) error {
 	}
 	h = s.secHeadersMW(h)
 	h = s.recoverMW(h)
-	h = accessLogMW(h)
+	if !opt.QuietLogs {
+		h = accessLogMW(h)
+	}
 	h = requestIDMW(h)
+	return h, s
+}
 
+func Serve(opt Options) error {
+	h, s := newServer(opt)
 	srv := &http.Server{
 		Addr:              opt.Addr,
 		Handler:           h,
@@ -235,6 +250,7 @@ func Serve(opt Options) error {
 		mode = "dev"
 	}
 	log.Printf("gotsx: listening on http://localhost%s  routes=%d  mode=%s", opt.Addr, len(s.opt.Routes), mode)
+	opt = s.opt
 	err := srv.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		<-idle
@@ -610,12 +626,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request) {
 	}
 	t := time.Now()
 	var seq uint32
-	var pending []*Pending
-	html, err := s.render(func() Node {
-		var out string
-		out, pending = RenderPending(route.Render(props), &seq)
-		return RawNode(out)
-	})
+	html, pending, err := s.renderDoc(r, &seq, func() Node { return route.Render(props) })
 	us := time.Since(t).Microseconds()
 	if err != nil {
 		var he *HostError
@@ -633,11 +644,43 @@ func (s *server) page(w http.ResponseWriter, r *http.Request) {
 		s.serveError(w, r, http.StatusInternalServerError, err)
 		return
 	}
-	w.Header().Set("Server-Timing", fmt.Sprintf("go;dur=%.3f", float64(us)/1000))
-	s.writeDoc(w, r, http.StatusOK, html)
+	w.Header().Set("Server-Timing", "go;dur="+strconv.FormatFloat(float64(us)/1000, 'f', 3, 64))
+	s.writeHTML(w, http.StatusOK, html)
 	if len(pending) > 0 {
 		s.streamPending(w, r, pending, &seq)
 	}
+}
+
+// renderDoc: 渲染一整页(doctype + 引导脚本注入), recover 渲染期间的 panic 成 error
+func (s *server) renderDoc(r *http.Request, seq *uint32, fn func() Node) (html string, pending []*Pending, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			switch e := rec.(type) {
+			case *HostError:
+				err = e
+			case *RedirectError:
+				err = e
+			case *ThrowError:
+				err = e
+			case error:
+				err = fmt.Errorf("panic: %v\n%s", e, debug.Stack())
+			default:
+				err = fmt.Errorf("panic: %v\n%s", rec, debug.Stack())
+			}
+		}
+	}()
+	html, pending = RenderDoc(fn(), seq, s.injectFor(r))
+	return html, pending, nil
+}
+
+// writeHTML: 页面响应头 + 正文(html 已含 doctype 与注入)
+func (s *server) writeHTML(w http.ResponseWriter, status int, html string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, ok := w.Header()["Cache-Control"]; !ok {
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	w.WriteHeader(status)
+	io.WriteString(w, html)
 }
 
 // streamPending: 外壳已经写出; 每个 Suspense 边界在自己的 goroutine 里渲染, 完成一个就追加一个
@@ -719,8 +762,23 @@ func (s *server) propsFor(r *http.Request, params map[string]string) PageProps {
 	return PageProps{Params: params, Query: query, Path: r.URL.Path, Cookies: cookies}
 }
 
-// writeDoc: 注入 doctype + manifest + 带 nonce 的内联 script + loader, 写出
+// writeDoc: 给已渲染好的 html(404 / 错误页)注入 doctype + 引导脚本后写出
 func (s *server) writeDoc(w http.ResponseWriter, r *http.Request, status int, html string) {
+	inject := s.injectFor(r)
+	var out string
+	switch {
+	case strings.Contains(html, "</head>"):
+		out = "<!DOCTYPE html>" + strings.Replace(html, "</head>", inject+"</head>", 1)
+	case strings.Contains(html, "</body>"):
+		out = "<!DOCTYPE html>" + strings.Replace(html, "</body>", inject+"</body>", 1)
+	default:
+		out = "<!DOCTYPE html>" + html + inject
+	}
+	s.writeHTML(w, status, out)
+}
+
+// injectFor: 这次响应要塞进文档头部的东西 —— hreflang、window.__GOTSX(manifest / i18n 目录 / dev 标记)、填充函数、loader
+func (s *server) injectFor(r *http.Request) string {
 	nonce, _ := r.Context().Value(ctxNonce).(string)
 	na := ""
 	if nonce != "" {
@@ -758,22 +816,7 @@ func (s *server) writeDoc(w http.ResponseWriter, r *http.Request, status int, ht
 		hb.WriteString(`<link rel="alternate" hreflang="x-default" href="` + scheme + "://" + r.Host + LPath(i18nCfg.Default, path) + `">`)
 		head = hb.String()
 	}
-	inject := head + fmt.Sprintf(`<script%s>window.__GOTSX=%s;%s</script><script type="module" src="%s"></script>`, na, gv, fillScript, s.loader)
-	var out string
-	switch {
-	case strings.Contains(html, "</head>"):
-		out = "<!DOCTYPE html>" + strings.Replace(html, "</head>", inject+"</head>", 1)
-	case strings.Contains(html, "</body>"): // 页面没写 <head>: 注入到 body 末尾(loader 是 module, 位置不影响)
-		out = "<!DOCTYPE html>" + strings.Replace(html, "</body>", inject+"</body>", 1)
-	default:
-		out = "<!DOCTYPE html>" + html + inject
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, ok := w.Header()["Cache-Control"]; !ok {
-		w.Header().Set("Cache-Control", "no-store")
-	}
-	w.WriteHeader(status)
-	io.WriteString(w, out)
+	return head + `<script` + na + `>window.__GOTSX=` + gv + `;` + fillScript + `</script><script type="module" src="` + s.loader + `"></script>`
 }
 
 func (s *server) serve404(w http.ResponseWriter, r *http.Request, props PageProps) {
