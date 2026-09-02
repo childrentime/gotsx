@@ -1,5 +1,6 @@
 import { useState, emit } from "gotsx";
 import type { CartView } from "host:cart";
+import Icon from "../ui/Icon";
 
 export default function CartPage({ cart }: { cart: CartView }) {
   const [c, setC] = useState(cart);
@@ -13,51 +14,51 @@ export default function CartPage({ cart }: { cart: CartView }) {
     setBusy(false);
   };
   return (
-    <div class={busy ? "opacity-60 transition" : "transition"}>
+    <div class={busy ? "opacity-60 transition-opacity" : "transition-opacity"}>
       {c.empty ? (
-        <div class="rounded-xl2 border border-ink-100 bg-white py-24 text-center">
-          <div class="text-7xl">🛒</div>
-          <p class="mt-4 text-ink-500">购物车还是空的</p>
-          <a href="/" class="mt-5 inline-block rounded-full bg-brand-500 px-8 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600">去挑点好物</a>
+        <div class="card flex flex-col items-center py-24 text-center">
+          <span class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"><Icon name="cart" className="h-5 w-5" /></span>
+          <p class="mt-4 font-medium">购物车还是空的</p>
+          <a href="/" class="btn btn-primary mt-6">去挑点好物</a>
         </div>
       ) : (
         <div class="grid gap-5 lg:grid-cols-[1fr_320px]">
-          <div class="divide-y divide-ink-100 overflow-hidden rounded-xl2 border border-ink-100 bg-white">
+          <div class="card divide-y divide-border overflow-hidden">
             {c.items.map((it) => (
-              <div class="flex items-center gap-3.5 p-4">
-                <a href={`/p/${it.id}`} class="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl text-4xl" style={`background:radial-gradient(120% 120% at 50% 20%, #fff, hsl(${it.hue} 46% 95%))`}>{it.emoji}</a>
+              <div class="flex items-center gap-4 p-4">
+                <a href={`/p/${it.id}`} class="shot flex h-20 w-20 shrink-0 items-center justify-center rounded-md text-4xl"><span class="emoji">{it.emoji}</span></a>
                 <div class="min-w-0 flex-1">
-                  <a href={`/p/${it.id}`} class="line-clamp-1 text-sm font-medium text-ink-800 transition hover:text-brand-600">{it.title}</a>
-                  {it.variant !== "" && <div class="mt-1 inline-block rounded bg-ink-50 px-2 py-0.5 text-xs text-ink-500">{it.variant}</div>}
-                  <div class="mt-1.5 text-[15px] font-bold text-brand-600">{it.priceFmt}</div>
+                  <a href={`/p/${it.id}`} class="line-clamp-1 text-sm font-medium transition-colors hover:text-muted-foreground">{it.title}</a>
+                  {it.variant !== "" && <div class="mt-1 inline-block rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{it.variant}</div>}
+                  <div class="mt-1.5 text-sm tabular-nums">{it.priceFmt}</div>
                 </div>
-                <div class="flex items-center rounded-lg border border-ink-200">
-                  <button class="h-8 w-8 text-ink-500 transition hover:text-brand-600 disabled:opacity-30" disabled={busy} onClick={() => update(it.id, it.variant, it.qty - 1)}>−</button>
-                  <span class="w-9 text-center text-[13px] font-bold tabular-nums">{it.qty}</span>
-                  <button class="h-8 w-8 text-ink-500 transition hover:text-brand-600 disabled:opacity-30" disabled={busy} onClick={() => update(it.id, it.variant, it.qty + 1)}>+</button>
+                <div class="inline-flex items-center rounded-md border border-input bg-background">
+                  <button class="btn btn-ghost btn-icon-sm rounded-r-none" disabled={busy} onClick={() => update(it.id, it.variant, it.qty - 1)} aria-label="减少"><Icon name="minus" /></button>
+                  <span class="w-9 text-center text-[13px] font-medium tabular-nums">{it.qty}</span>
+                  <button class="btn btn-ghost btn-icon-sm rounded-l-none" disabled={busy} onClick={() => update(it.id, it.variant, it.qty + 1)} aria-label="增加"><Icon name="plus" /></button>
                 </div>
-                <div class="w-20 text-right text-sm font-bold">{it.lineFmt}</div>
-                <button class="text-ink-300 transition hover:text-brand-500" aria-label="删除" disabled={busy} onClick={() => update(it.id, it.variant, 0)}>🗑️</button>
+                <div class="w-20 text-right text-sm font-medium tabular-nums">{it.lineFmt}</div>
+                <button class="btn btn-ghost btn-icon-sm text-muted-foreground hover:text-destructive" aria-label="删除" disabled={busy} onClick={() => update(it.id, it.variant, 0)}><Icon name="trash" /></button>
               </div>
             ))}
           </div>
-          <div class="h-fit rounded-xl2 border border-ink-100 bg-white p-5 lg:sticky lg:top-32">
-            <h2 class="mb-4 text-base font-bold">订单摘要</h2>
-            <div class="space-y-2.5 text-sm text-ink-600">
-              <div class="flex justify-between"><span>商品小计({c.count} 件)</span><span class="font-medium text-ink-900">{c.subtotalFmt}</span></div>
-              <div class="flex justify-between"><span>运费</span><span class={c.freeShip ? "font-semibold text-emerald-600" : "text-ink-900"}>{c.shippingFmt}</span></div>
+          <div class="card h-fit p-5 lg:sticky lg:top-32">
+            <h2 class="mb-4 text-base font-semibold">订单摘要</h2>
+            <div class="space-y-2.5 text-sm text-muted-foreground">
+              <div class="flex justify-between"><span>商品小计({c.count} 件)</span><span class="text-foreground tabular-nums">{c.subtotalFmt}</span></div>
+              <div class="flex justify-between"><span>运费</span><span class={c.freeShip ? "text-success" : "text-foreground tabular-nums"}>{c.shippingFmt}</span></div>
               {!c.freeShip && (
-                <div class="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700">
-                  再买 <span class="font-bold">{c.freeGapFmt}</span> 即可免运费 🚚
+                <div class="rounded-md bg-muted px-3 py-2 text-xs">
+                  再买 <span class="font-medium text-foreground">{c.freeGapFmt}</span> 即可免运费
                 </div>
               )}
             </div>
-            <div class="mt-4 flex items-baseline justify-between border-t border-ink-100 pt-4">
-              <span class="text-sm text-ink-500">应付合计</span>
-              <span class="text-2xl font-black text-brand-600">{c.totalFmt}</span>
+            <div class="mt-4 flex items-baseline justify-between border-t border-border pt-4">
+              <span class="text-sm text-muted-foreground">应付合计</span>
+              <span class="text-2xl font-semibold tracking-tight tabular-nums">{c.totalFmt}</span>
             </div>
-            <a href="/checkout" class="mt-5 block rounded-full bg-gradient-to-r from-brand-500 to-brand-600 py-3 text-center text-[15px] font-bold text-white shadow-pop transition hover:brightness-105">去结算 ({c.count})</a>
-            <p class="mt-3 text-center text-xs text-ink-300">🔒 安全支付 · 支持 7 天无理由退换</p>
+            <a href="/checkout" class="btn btn-primary btn-lg mt-5 w-full">去结算 ({c.count})</a>
+            <p class="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground"><Icon name="shield" className="h-3.5 w-3.5" />安全支付 · 7 天无理由退换</p>
           </div>
         </div>
       )}

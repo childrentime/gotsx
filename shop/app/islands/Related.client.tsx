@@ -16,7 +16,7 @@ export default function Related({ id }: { id: string }) {
     run();
   }, []);
   return (
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
       {loading && [0, 1, 2, 3, 4, 5].map(() => <SkeletonCard />)}
       {cards.map((c) => <CardShell card={c}></CardShell>)}
     </div>

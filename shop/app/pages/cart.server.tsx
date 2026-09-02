@@ -7,7 +7,7 @@ export default function Cart({ cookies, locale }: PageProps) {
   const sid = cookies.sid ?? "";
   return (
     <Layout title="购物车" sid={sid} locale={locale} wide>
-      <h1 class="mb-4 text-xl font-extrabold tracking-tight">购物车</h1>
+      <h1 class="mb-5 text-xl font-semibold tracking-tight">购物车</h1>
       <CartPage cart={view(sid)} />
     </Layout>
   );

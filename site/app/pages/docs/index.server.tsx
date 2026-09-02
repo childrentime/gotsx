@@ -10,20 +10,20 @@ export default function Docs({ locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   return (
     <DocsLayout title={loc(lc, "Quick start", "快速开始")} active="docs" locale={lc} path={path}>
-      <p class="text-[15px] leading-7 text-zinc-700 dark:text-zinc-300">
+      <p class="text-[15px] leading-7">
         {loc(lc, "gotsx is a Go module. An app = one Go package (routes, host modules, actions) + one ", "gotsx 是一个 Go 模块。应用 = 一个 Go 包(路由、宿主模块、动作) + 一个 ")}<code class="font-mono text-sm">app/</code>{loc(lc, " directory (pages, components, and islands written in the dialect). The compiler turns ", " 目录(方言写的页面、组件、岛)。编译器把 ")}<code class="font-mono text-sm">app/</code>{loc(lc, " into Go and JS under ", " 变成 ")}<code class="font-mono text-sm">gen/</code>{loc(lc, ", then ", " 里的 Go 和 JS, 然后 ")}<code class="font-mono text-sm">go build</code>{loc(lc, ".", "。")}
       </p>
 
-      <Section title={loc(lc, "1. Run the example", "1. 运行示例")} lead={loc(lc, "The repo ships a MakerWorld-style example app", "仓库自带一个 MakerWorld 式的示例应用")}>
+      <Section title={loc(lc, "1. Create an app", "1. 创建应用")} lead={loc(lc, "One go install, one gotsx new — the result runs right away", "一条 go install、一条 gotsx new, 出来的应用直接能跑")}>
         <CodeBlock code={sampleRun} lang="bash" title={loc(lc, "terminal", "终端")} />
         <Callout kind="info">
-          <code class="font-mono">gotsx dev</code>{loc(lc, " first runs ", " 会先跑 ")}<code class="font-mono">cmd/hostgen</code>{loc(lc, " to generate host types, then compiles the dialect, then ", " 生成宿主类型, 再编译方言, 再 ")}<code class="font-mono">go build</code>{loc(lc, " and starts up; after that it watches ", " 并启动; 之后监视 ")}<code class="font-mono">app/</code>{loc(lc, " and goes live again about 2 seconds after a change. When a compile fails, the old version keeps running.", ", 改动后约 2 秒重新上线。编译失败时旧版本继续运行。")}
+          <code class="font-mono">gotsx dev</code>{loc(lc, " first runs ", " 会先跑 ")}<code class="font-mono">cmd/hostgen</code>{loc(lc, " to generate host types, then compiles the dialect, then ", " 生成宿主类型, 再编译方言, 再 ")}<code class="font-mono">go build</code>{loc(lc, " and starts up; after that it watches ", " 并启动; 之后监视 ")}<code class="font-mono">app/</code>{loc(lc, " and goes live again about 2 seconds after a change — the browser reloads by itself. When a compile fails, the old version keeps running. The repo's own demos run with ", ", 改动后约 2 秒重新上线, 浏览器自动刷新。编译失败时旧版本继续运行。仓库自带的示例用 ")}<code class="font-mono">make dev-example</code>{loc(lc, " / ", " / ")}<code class="font-mono">dev-shop</code>{loc(lc, ".", "。")}
         </Callout>
       </Section>
 
       <Section title={loc(lc, "2. Directory conventions", "2. 目录约定")}>
         <CodeBlock code={sampleLayout} lang="bash" title="example/" />
-        <p>{loc(lc, "The suffix decides the compile target: ", "后缀决定编译目标: ")}<code class="font-mono text-sm">.server.tsx</code>{loc(lc, " is Go only, ", " 只编 Go, ")}<code class="font-mono text-sm">.client.tsx</code>{loc(lc, " is Go + JS (an island), and no suffix is a shared component (both sides). Files under ", " 编 Go + JS(岛), 无后缀是共享组件(两端都编)。")}<code class="font-mono text-sm">pages/</code>{loc(lc, " are routes, and ", " 下的文件是路由, ")}<code class="font-mono text-sm">[id]</code>{loc(lc, " is a path parameter.", " 是路径参数。")}</p>
+        <p>{loc(lc, "The suffix decides the compile target: ", "后缀决定编译目标: ")}<code class="font-mono text-sm">.server.tsx</code>{loc(lc, " is Go only, ", " 只编 Go, ")}<code class="font-mono text-sm">.client.tsx</code>{loc(lc, " is Go + JS (an island), and no suffix is a shared component (both sides). Files under ", " 编 Go + JS(岛), 无后缀是共享组件(两端都编)。")}<code class="font-mono text-sm">pages/</code>{loc(lc, " are routes, ", " 下的文件是路由, ")}<code class="font-mono text-sm">[id]</code>{loc(lc, " is a path parameter and ", " 是路径参数, ")}<code class="font-mono text-sm">[...slug]</code>{loc(lc, " a catch-all. Inside a page, ", " 是 catch-all。页面里 ")}<code class="font-mono text-sm">redirect()</code>{loc(lc, " / ", " / ")}<code class="font-mono text-sm">notFound()</code>{loc(lc, " abort the render.", " 可以中断渲染。")}</p>
       </Section>
 
       <Section title={loc(lc, "3. Write a page", "3. 写一个页面")} lead={loc(lc, "A page is an export default component whose props are always PageProps", "页面是 export default 的组件, props 固定是 PageProps")}>

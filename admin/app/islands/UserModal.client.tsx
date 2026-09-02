@@ -1,4 +1,5 @@
 import { useState, useEffect, on, emit } from "gotsx";
+import Icon from "../ui/Icon";
 
 interface Errs { name?: string; email?: string; role?: string; dept?: string; _?: string; }
 interface UserForm { id?: string; name?: string; email?: string; role?: string; dept?: string; status?: string; }
@@ -46,59 +47,61 @@ export default function UserModal() {
     }
   };
 
-  const field = (bad: boolean) => bad
-    ? "h-10 w-full rounded-lg border-2 border-rose-400 bg-white px-3 text-sm outline-none"
-    : "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-brand-500";
+  const field = (bad: boolean) => (bad ? "input border-destructive focus-visible:ring-destructive/30" : "input");
+  const select = (bad: boolean) => (bad ? "select w-full border-destructive" : "select w-full");
 
   return (
     open ? (
-      <div class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setOpen(false)}>
-        <div class="modal-in w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-          <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-lg font-bold">{id !== "" ? "编辑用户" : "新建用户"}</h2>
-            <button class="text-slate-400 hover:text-slate-700" onClick={() => setOpen(false)}>✕</button>
+      <div class="fixed inset-0 z-40 flex items-center justify-center bg-foreground/40 p-4" onClick={() => setOpen(false)}>
+        <div class="card pop-in w-full max-w-md p-6 shadow-lg" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+          <div class="mb-5 flex items-start justify-between">
+            <div>
+              <h2 class="text-base font-semibold tracking-tight">{id !== "" ? "编辑用户" : "新建用户"}</h2>
+              <p class="mt-1 text-sm text-muted-foreground">{id !== "" ? "修改后保存, 服务端会再次校验。" : "填写基本信息, 邮箱需唯一。"}</p>
+            </div>
+            <button class="btn btn-ghost btn-icon-sm -mr-2 -mt-1 text-muted-foreground" aria-label="关闭" onClick={() => setOpen(false)}><Icon name="x" /></button>
           </div>
-          {errs._ !== undefined && <div class="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{errs._}</div>}
-          <div class="space-y-3">
-            <div>
-              <label class="mb-1 block text-xs font-medium text-slate-500">姓名</label>
+          {errs._ !== undefined && <div class="mb-4 flex items-center gap-2 rounded-md border border-destructive/30 px-3 py-2 text-sm text-destructive"><Icon name="alert" />{errs._}</div>}
+          <div class="space-y-4">
+            <div class="space-y-2">
+              <label class="label">姓名</label>
               <input class={field(errs.name !== undefined)} value={name} onInput={(e) => setName(e.target.value)} />
-              {errs.name !== undefined && <p class="mt-1 text-xs text-rose-500">{errs.name}</p>}
+              {errs.name !== undefined && <p class="text-xs text-destructive">{errs.name}</p>}
             </div>
-            <div>
-              <label class="mb-1 block text-xs font-medium text-slate-500">邮箱</label>
+            <div class="space-y-2">
+              <label class="label">邮箱</label>
               <input class={field(errs.email !== undefined)} value={email} onInput={(e) => setEmail(e.target.value)} />
-              {errs.email !== undefined && <p class="mt-1 text-xs text-rose-500">{errs.email}</p>}
+              {errs.email !== undefined && <p class="text-xs text-destructive">{errs.email}</p>}
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="mb-1 block text-xs font-medium text-slate-500">角色</label>
-                <select class={field(errs.role !== undefined)} value={role} onChange={(e) => setRole(e.target.value)}>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <label class="label">角色</label>
+                <select class={select(errs.role !== undefined)} value={role} onChange={(e) => setRole(e.target.value)}>
                   <option value="admin">管理员</option>
                   <option value="editor">编辑</option>
                   <option value="viewer">只读</option>
                 </select>
               </div>
-              <div>
-                <label class="mb-1 block text-xs font-medium text-slate-500">部门</label>
+              <div class="space-y-2">
+                <label class="label">部门</label>
                 <input class={field(errs.dept !== undefined)} value={dept} onInput={(e) => setDept(e.target.value)} />
-                {errs.dept !== undefined && <p class="mt-1 text-xs text-rose-500">{errs.dept}</p>}
+                {errs.dept !== undefined && <p class="text-xs text-destructive">{errs.dept}</p>}
               </div>
             </div>
             {id !== "" && (
-              <div>
-                <label class="mb-1 block text-xs font-medium text-slate-500">状态</label>
-                <select class={field(false)} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <div class="space-y-2">
+                <label class="label">状态</label>
+                <select class={select(false)} value={status} onChange={(e) => setStatus(e.target.value)}>
                   <option value="active">启用</option>
                   <option value="disabled">禁用</option>
                 </select>
               </div>
             )}
           </div>
-          <div class="mt-5 flex justify-end gap-2">
-            <button class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50" onClick={() => setOpen(false)}>取消</button>
-            <button class="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-5 py-2 text-sm font-bold text-white hover:bg-brand-600 disabled:opacity-50" disabled={busy} onClick={save}>
-              {busy && <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>}
+          <div class="mt-6 flex justify-end gap-2">
+            <button class="btn btn-outline" onClick={() => setOpen(false)}>取消</button>
+            <button class="btn btn-primary" disabled={busy} onClick={save}>
+              {busy && <Icon name="spinner" cls="icon animate-spin" />}
               保存
             </button>
           </div>

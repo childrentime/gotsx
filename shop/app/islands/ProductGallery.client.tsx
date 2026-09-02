@@ -6,12 +6,12 @@ export default function ProductGallery({ id, hue, count }: { id: string; hue: nu
   const idx = [0, 1, 2, 3].slice(0, count);
   const src = (i: number) => (i === 0 ? `/img/p/${id}` : `/img/p/${id}?g=${i - 1}`);
   return (
-    <div>
-      <img src={src(cur)} alt="商品图" width={400} height={400} decoding="async" class="aspect-square w-full rounded-xl2 border border-ink-100 object-cover" />
+    <div data-hue={hue}>
+      <img src={src(cur)} alt="商品图" width={400} height={400} decoding="async" class="aspect-square w-full rounded-md border border-border bg-muted object-cover" />
       <div class="mt-3 flex gap-2">
         {idx.map((i) => (
           <button
-            class={cur === i ? "h-16 w-16 overflow-hidden rounded-xl border-2 border-brand-500" : "h-16 w-16 overflow-hidden rounded-xl border border-ink-200 transition hover:border-brand-300"}
+            class={cur === i ? "h-16 w-16 overflow-hidden rounded-md border-2 border-foreground bg-muted" : "h-16 w-16 overflow-hidden rounded-md border border-border bg-muted transition-colors hover:border-foreground/40"}
             onClick={() => setCur(i)}
           >
             <img src={src(i)} alt="缩略图" width={64} height={64} loading="lazy" decoding="async" class="h-full w-full object-cover" />

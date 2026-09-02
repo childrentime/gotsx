@@ -28,7 +28,7 @@ export default function Architecture({ locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   return (
     <DocsLayout title={loc(lc, "Architecture & internals", "架构与原理")} active="architecture" locale={lc} path={path}>
-      <p class="text-[15px] leading-7 text-zinc-700 dark:text-zinc-300">
+      <p class="text-[15px] leading-7">
         {loc(lc, "The core insight is a single sentence: ", "核心洞察只有一句: ")}<strong>{loc(lc, "SSR is a single synchronous one-pass evaluation.", "SSR 是一次同步的单趟求值。")}</strong>{loc(lc, " No re-render, no effects, setters are never called. So the server needs no React runtime, only the component's \"render slice\" — and its semantics are small enough to compile to Go.", " 没有重渲染、没有 effect、setter 永远不会被调用。所以服务端不需要 React 运行时, 只需要组件的\"渲染切片\"——而它的语义小到可以编译成 Go。")}
       </p>
 
@@ -73,15 +73,15 @@ export default function Architecture({ locale, path }: PageProps) {
       </Section>
 
       <Section title={loc(lc, "Compared with the goja route", "和 goja 路线的对比")} lead={loc(lc, "Same machine, same kind of page", "同一台机器, 同一类页面")}>
-        <div class="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900"><tr><th class="px-4 py-2">{loc(lc, "Item", "项")}</th><th class="px-4 py-2">goja + React + MUI</th><th class="px-4 py-2">gotsx</th></tr></thead>
-            <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
-              <tr><td class="px-4 py-2">{loc(lc, "list page render", "列表页渲染")}</td><td class="px-4 py-2">45–60 ms</td><td class="px-4 py-2 font-semibold">~30 µs</td></tr>
-              <tr><td class="px-4 py-2">{loc(lc, "throughput", "吞吐")}</td><td class="px-4 py-2">{loc(lc, "~31 req/s (4 VMs)", "~31 req/s(4 VM)")}</td><td class="px-4 py-2 font-semibold">~28k req/s</td></tr>
-              <tr><td class="px-4 py-2">{loc(lc, "client runtime", "客户端运行时")}</td><td class="px-4 py-2">react-dom 62 KB gz</td><td class="px-4 py-2 font-semibold">6 KB</td></tr>
-              <tr><td class="px-4 py-2">{loc(lc, "debugging", "调试")}</td><td class="px-4 py-2">{loc(lc, "no breakpoints", "没有断点")}</td><td class="px-4 py-2 font-semibold">delve / pprof / go test</td></tr>
-              <tr><td class="px-4 py-2">{loc(lc, "npm ecosystem", "npm 生态")}</td><td class="px-4 py-2">{loc(lc, "pure-JS packages work", "纯 JS 包可用")}</td><td class="px-4 py-2">{loc(lc, "unavailable; libraries are written in the dialect", "不可用, 库用方言写")}</td></tr>
+        <div class="overflow-x-auto rounded-lg border border-border">
+          <table class="table">
+            <thead><tr><th>{loc(lc, "Item", "项")}</th><th>goja + React + MUI</th><th>gotsx</th></tr></thead>
+            <tbody>
+              <tr><td class="text-muted-foreground">{loc(lc, "list page render", "列表页渲染")}</td><td class="text-muted-foreground">45–60 ms</td><td class="font-medium">~30 µs</td></tr>
+              <tr><td class="text-muted-foreground">{loc(lc, "throughput", "吞吐")}</td><td class="text-muted-foreground">{loc(lc, "~31 req/s (4 VMs)", "~31 req/s(4 VM)")}</td><td class="font-medium">~28k req/s</td></tr>
+              <tr><td class="text-muted-foreground">{loc(lc, "client runtime", "客户端运行时")}</td><td class="text-muted-foreground">react-dom 62 KB gz</td><td class="font-medium">6 KB</td></tr>
+              <tr><td class="text-muted-foreground">{loc(lc, "debugging", "调试")}</td><td class="text-muted-foreground">{loc(lc, "no breakpoints", "没有断点")}</td><td class="font-medium">delve / pprof / go test</td></tr>
+              <tr><td class="text-muted-foreground">{loc(lc, "npm ecosystem", "npm 生态")}</td><td class="text-muted-foreground">{loc(lc, "pure-JS packages work", "纯 JS 包可用")}</td><td class="text-muted-foreground">{loc(lc, "unavailable; libraries are written in the dialect", "不可用, 库用方言写")}</td></tr>
             </tbody>
           </table>
         </div>

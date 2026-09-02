@@ -1,89 +1,10 @@
-@import "tailwindcss";
+@import "../../design/gotsx.css";
 
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --font-display: "Inter", ui-sans-serif, system-ui, "PingFang SC", sans-serif;
+/* shop-specific: product "studio shots" are emoji on a neutral surface with one soft shadow */
+.shot { position: relative; overflow: hidden; background: var(--color-muted); }
+.shot > .emoji { position: relative; line-height: 1; display: block; text-align: center; filter: drop-shadow(0 8px 10px rgb(0 0 0 / .12)); transition: transform .3s ease; }
+.group:hover .shot > .emoji { transform: translateY(-3px); }
 
-  /* 品牌: 温暖的珊瑚红, 比 Temu 更克制一点 */
-  --color-brand-50: #fff1ee;
-  --color-brand-100: #ffe0d8;
-  --color-brand-200: #ffc3b3;
-  --color-brand-300: #ff9c82;
-  --color-brand-400: #ff6f4d;
-  --color-brand-500: #f9491f;
-  --color-brand-600: #e63410;
-  --color-brand-700: #bf2610;
-  --color-brand-800: #9d2314;
-  --color-brand-900: #822217;
-
-  --color-ink-50: #f7f6f4;
-  --color-ink-100: #eeece8;
-  --color-ink-200: #dcd8d1;
-  --color-ink-300: #bdb6ac;
-  --color-ink-400: #94897c;
-  --color-ink-500: #766b5e;
-  --color-ink-600: #5d5348;
-  --color-ink-700: #4a4139;
-  --color-ink-800: #332d28;
-  --color-ink-900: #1c1815;
-
-  --color-gold-400: #fbbf24;
-  --color-gold-500: #f59e0b;
-
-  --radius-xl2: 1.1rem;
-  --shadow-card: 0 1px 2px rgba(28,24,21,.04), 0 6px 20px -8px rgba(28,24,21,.10);
-  --shadow-cardhover: 0 2px 4px rgba(28,24,21,.05), 0 18px 40px -14px rgba(230,52,16,.18);
-  --shadow-pop: 0 10px 40px -8px rgba(28,24,21,.22);
-}
-
-@layer base {
-  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
-  body { background: var(--color-ink-50); color: var(--color-ink-900); font-feature-settings: "cv11", "ss01"; }
-  ::selection { background: var(--color-brand-200); }
-  ::-webkit-scrollbar { height: 8px; width: 8px; }
-  ::-webkit-scrollbar-thumb { background: var(--color-ink-200); border-radius: 999px; }
-  .no-scrollbar::-webkit-scrollbar { display: none; }
-  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-}
-
-/* 产品"棚拍": 近白影棚背景 + 落地投影 + 大图 emoji, 读起来像商品图而不是色块 */
-.shot { position: relative; overflow: hidden; }
-.shot::before {
-  content: ""; position: absolute; left: 50%; bottom: 14%; width: 56%; height: 12%;
-  transform: translateX(-50%); border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(28,24,21,.20), rgba(28,24,21,0) 70%);
-  filter: blur(3px);
-}
-.shot > .emoji {
-  position: relative; z-index: 1; line-height: 1; display: block; text-align: center;
-  filter: drop-shadow(0 12px 14px rgba(28,24,21,.18));
-  transition: transform .45s cubic-bezier(.2,.7,.3,1);
-}
-.group:hover .shot > .emoji { transform: translateY(-6px) scale(1.06); }
-
-/* 骨架屏微光 */
-@keyframes shimmer { 100% { transform: translateX(100%); } }
-.skel { position: relative; overflow: hidden; background: var(--color-ink-100); border-radius: 8px; }
-.skel::after {
-  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent);
-  animation: shimmer 1.4s infinite;
-}
-
-/* 顶部导航进度条(loader.js 控制) */
-#gotsx-bar {
-  position: fixed; top: 0; left: 0; height: 3px; width: 0; z-index: 60;
-  background: linear-gradient(90deg, var(--color-brand-500), var(--color-gold-400));
-  box-shadow: 0 0 8px rgba(249,73,31,.6); transition: width .2s ease, opacity .3s ease; opacity: 0;
-}
-
-/* 心愿单心跳 */
-@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
-.heart-pop { animation: pop .4s ease; }
-
-.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-
-/* 入场淡入 */
-@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.fade-up { animation: fadeUp .4s ease both; }
+/* wishlist / cart badge feedback: one short scale pulse */
+@keyframes gotsx-pop { 0% { transform: scale(1); } 40% { transform: scale(1.2); } 100% { transform: scale(1); } }
+.heart-pop { animation: gotsx-pop .3s ease; }

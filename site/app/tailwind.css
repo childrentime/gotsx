@@ -1,21 +1,34 @@
-@import "tailwindcss";
-@custom-variant dark (&:where(.dark, .dark *));
+@import "../../design/gotsx.css";
 
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --color-brand-50: #eef6ff;
-  --color-brand-100: #d9ebff;
-  --color-brand-200: #b9d9ff;
-  --color-brand-300: #86bdff;
-  --color-brand-400: #4c98ff;
-  --color-brand-500: #2372f5;
-  --color-brand-600: #1557d6;
-  --color-brand-700: #1345ad;
-  --color-brand-800: #153c8a;
-  --color-brand-900: #16346d;
+/* Syntax highlighting: a restrained, desaturated palette on top of the design tokens.
+   Keywords are just the foreground at 600 weight; everything else is a muted hue. */
+:root {
+  --tok-kw: var(--foreground);
+  --tok-str: #3b7a5c;
+  --tok-cmt: var(--muted-foreground);
+  --tok-num: #9a6700;
+  --tok-tag: #3d5a80;
+  --tok-attr: #7a6a3a;
+  --tok-type: #2f7373;
+  --tok-punct: var(--muted-foreground);
 }
+.dark {
+  --tok-str: #8fc2a6;
+  --tok-num: #d9b36b;
+  --tok-tag: #9bb8dd;
+  --tok-attr: #cdbb86;
+  --tok-type: #86c4c4;
+}
+.tok-kw { color: var(--tok-kw); font-weight: 600; }
+.tok-str { color: var(--tok-str); }
+.tok-cmt { color: var(--tok-cmt); font-style: italic; }
+.tok-num { color: var(--tok-num); }
+.tok-tag { color: var(--tok-tag); }
+.tok-attr { color: var(--tok-attr); }
+.tok-type { color: var(--tok-type); }
+.tok-punct { color: var(--tok-punct); }
 
-html { scroll-behavior: smooth; }
-::selection { background: var(--color-brand-200); }
-.dark ::selection { background: var(--color-brand-800); }
+/* Inline code in prose (never inside a code block) */
+@layer components {
+  .prose-code code:not(pre *) { @apply rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[13px] text-foreground; }
+}

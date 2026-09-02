@@ -13,7 +13,7 @@ export default function Language({ locale, path }: PageProps) {
   const ok = rows.filter((r) => r.ok).length;
   return (
     <DocsLayout title={loc(lc, "Language reference", "语言参考")} active="language" locale={lc} path={path}>
-      <p class="text-[15px] leading-7 text-zinc-700 dark:text-zinc-300">
+      <p class="text-[15px] leading-7">
         {loc(lc, "The gotsx dialect is ", "gotsx 的方言是一门")}<strong>{loc(lc, "a static language that borrows TSX syntax", "借 TSX 语法的静态语言")}</strong>{loc(lc, ", not an implementation of a TypeScript subset — it has no React runtime, and its type system is bounded by what Go can represent. The subset is defined by the type system: if every expression has a static type that falls inside the allowed set, it compiles; otherwise it's a compile error with a location.", ", 不是 TypeScript 的子集实现——它没有 React 运行时, 类型系统限定在 Go 能表示的集合里。子集由类型系统定义: 每个表达式都能推出一个静态类型, 且落在允许集合里, 就能编译; 否则是带位置的编译错误。")}
       </p>
       <Callout kind="info" title={loc(lc, "A few semantic conventions", "几个语义约定")}>

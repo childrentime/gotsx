@@ -1,36 +1,37 @@
 import type { PageProps } from "gotsx";
 import { list } from "host:orders";
 import Layout from "../../components/Layout.server";
+import Icon from "../../ui/Icon";
 
 export default function OrdersPage({ cookies, locale }: PageProps) {
   const sid = cookies.sid ?? "";
   const orders = list(sid);
   return (
     <Layout title="我的订单" sid={sid} locale={locale} active="orders" wide>
-      <h1 class="mb-4 text-xl font-extrabold tracking-tight">我的订单</h1>
+      <h1 class="mb-5 text-xl font-semibold tracking-tight">我的订单</h1>
       {orders.length === 0 ? (
-        <div class="rounded-xl2 border border-ink-100 bg-white py-24 text-center">
-          <div class="text-6xl">📦</div>
-          <p class="mt-4 text-ink-500">还没有订单</p>
-          <a href="/" class="mt-5 inline-block rounded-full bg-brand-500 px-8 py-2.5 text-sm font-bold text-white transition hover:bg-brand-600">去下第一单</a>
+        <div class="card flex flex-col items-center py-24 text-center">
+          <span class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"><Icon name="package" className="h-5 w-5" /></span>
+          <p class="mt-4 font-medium">还没有订单</p>
+          <a href="/" class="btn btn-primary mt-6">去下第一单</a>
         </div>
       ) : (
-        <div class="space-y-4">
+        <div class="space-y-3">
           {orders.map((o) => (
-            <a href={`/orders/${o.id}`} class="block rounded-xl2 border border-ink-100 bg-white p-5 transition hover:border-brand-200 hover:shadow-card">
+            <a href={`/orders/${o.id}`} class="card block p-5 transition-colors hover:border-foreground/25">
               <div class="flex items-center justify-between">
-                <span class="font-mono text-sm font-bold text-ink-700">{o.id}</span>
-                <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">{o.status}</span>
+                <span class="font-mono text-sm">{o.id}</span>
+                <span class="badge badge-success">{o.status}</span>
               </div>
               <div class="mt-3 flex items-center gap-2">
                 {o.items.slice(0, 8).map((it) => (
-                  <span class="flex h-11 w-11 items-center justify-center rounded-lg text-xl" style={`background:radial-gradient(120% 120% at 50% 20%, #fff, hsl(${it.hue} 46% 95%))`}>{it.emoji}</span>
+                  <span class="shot flex h-10 w-10 items-center justify-center rounded-md text-lg"><span class="emoji">{it.emoji}</span></span>
                 ))}
-                <span class="ml-auto text-xs text-ink-400">{o.createdFmt}</span>
+                <span class="ml-auto text-xs text-muted-foreground">{o.createdFmt}</span>
               </div>
-              <div class="mt-3 flex items-center justify-between border-t border-ink-50 pt-3 text-sm">
-                <span class="text-ink-400">共 {o.count} 件</span>
-                <span>合计 <span class="text-lg font-black text-brand-600">{o.totalFmt}</span></span>
+              <div class="mt-3 flex items-center justify-between border-t border-border pt-3 text-sm">
+                <span class="text-muted-foreground">共 {o.count} 件</span>
+                <span class="text-muted-foreground">合计 <span class="text-base font-semibold text-foreground tabular-nums">{o.totalFmt}</span></span>
               </div>
             </a>
           ))}

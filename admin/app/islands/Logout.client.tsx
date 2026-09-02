@@ -1,4 +1,5 @@
 import { useState } from "gotsx";
+import Icon from "../ui/Icon";
 export default function Logout() {
   const [busy, setBusy] = useState(false);
   const out = async () => {
@@ -6,5 +7,5 @@ export default function Logout() {
     await fetch("/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     window.location.href = "/login";
   };
-  return <button class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50" disabled={busy} onClick={out}>退出</button>;
+  return <button class="btn btn-ghost btn-icon-sm text-muted-foreground" title="退出" aria-label="退出" disabled={busy} onClick={out}><Icon name="logout" /></button>;
 }

@@ -1,4 +1,5 @@
 import { useState } from "gotsx";
+import Icon from "../ui/Icon";
 
 export interface QA {
   q: string;
@@ -8,18 +9,18 @@ export interface QA {
 export default function Accordion({ items }: { items: QA[] }) {
   const [open, setOpen] = useState(-1);
   return (
-    <div class="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
+    <div class="card divide-y divide-border">
       {items.map((it, i) => (
         <div>
           <button
-            class="flex w-full items-center justify-between px-5 py-3.5 text-left text-sm font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+            class="flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left text-sm font-medium transition-colors hover:bg-muted/50"
             aria-expanded={open === i}
             onClick={() => setOpen(open === i ? -1 : i)}
           >
             <span>{it.q}</span>
-            <span class="text-zinc-400">{open === i ? "−" : "+"}</span>
+            <Icon name="chevron-down" className={open === i ? "icon rotate-180 text-muted-foreground transition-transform" : "icon text-muted-foreground transition-transform"} />
           </button>
-          {open === i && <p class="px-5 pb-4 text-sm leading-6 text-zinc-600 dark:text-zinc-300">{it.a}</p>}
+          {open === i && <p class="px-5 pb-4 text-sm leading-6 text-muted-foreground">{it.a}</p>}
         </div>
       ))}
     </div>

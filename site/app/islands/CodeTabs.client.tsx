@@ -11,13 +11,13 @@ export interface Tab {
 export default function CodeTabs({ tabs }: { tabs: Tab[] }) {
   const [cur, setCur] = useState(0);
   return (
-    <div class="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 text-[13px] dark:border-zinc-800 dark:bg-zinc-900/70">
-      <div class="flex gap-1 border-b border-zinc-200 px-2 pt-2 dark:border-zinc-800" role="tablist">
+    <div class="overflow-hidden rounded-lg border border-border bg-muted/40 text-[13px]">
+      <div class="flex gap-4 border-b border-border px-4" role="tablist">
         {tabs.map((tab, i) => (
           <button
             role="tab"
             aria-selected={cur === i}
-            class={cur === i ? "rounded-t-md bg-white px-3 py-1.5 font-mono text-xs font-semibold text-brand-700 shadow-sm dark:bg-zinc-800 dark:text-brand-300" : "rounded-t-md px-3 py-1.5 font-mono text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"}
+            class={cur === i ? "-mb-px border-b-2 border-foreground py-2 font-mono text-xs font-medium text-foreground" : "-mb-px border-b-2 border-transparent py-2 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground"}
             onClick={() => setCur(i)}
           >
             {tab.label}

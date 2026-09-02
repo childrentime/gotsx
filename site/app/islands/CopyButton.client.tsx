@@ -1,4 +1,5 @@
 import { useState } from "gotsx";
+import Icon from "../ui/Icon";
 
 export default function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
@@ -8,8 +9,9 @@ export default function CopyButton({ text }: { text: string }) {
     setTimeout(() => setDone(false), 1500);
   };
   return (
-    <button class="rounded px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-100" onClick={copy}>
-      {done ? "已复制 ✓" : "复制"}
+    <button class="btn btn-ghost h-6 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={copy} aria-label="copy">
+      {done ? <Icon name="check" className="icon h-3.5 w-3.5 text-success" /> : <Icon name="copy" className="icon h-3.5 w-3.5" />}
+      {done ? "已复制" : "复制"}
     </button>
   );
 }

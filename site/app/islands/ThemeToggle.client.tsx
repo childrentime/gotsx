@@ -1,4 +1,5 @@
 import { useState, useEffect } from "gotsx";
+import Icon from "../ui/Icon";
 
 /** 主题切换: 只碰 document / localStorage, 这些在客户端代码里类型是 any */
 export default function ThemeToggle() {
@@ -13,8 +14,8 @@ export default function ThemeToggle() {
     localStorage.setItem("theme", next ? "dark" : "light");
   };
   return (
-    <button class="rounded-lg border border-zinc-200 px-2.5 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" onClick={toggle} aria-label="切换主题">
-      {dark ? "🌙" : "☀️"}
+    <button class="btn btn-ghost btn-icon-sm shrink-0 text-muted-foreground hover:text-foreground" onClick={toggle} aria-label="切换主题">
+      {dark ? <Icon name="moon" /> : <Icon name="sun" />}
     </button>
   );
 }

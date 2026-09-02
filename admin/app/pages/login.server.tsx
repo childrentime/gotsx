@@ -10,18 +10,19 @@ export default function Login({}: PageProps) {
         <title>登录 · gotsx admin</title>
         <link rel="stylesheet" href="/public/tailwind.css" />
       </head>
-      <body class="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 font-sans text-slate-900 antialiased">
+      <body class="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
         <div id="gotsx-bar"></div>
-        <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
-          <div class="mb-6 flex flex-col items-center">
-            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-2xl font-black text-white">g</span>
-            <h1 class="mt-3 text-xl font-black">登录后台</h1>
-            <p class="mt-1 text-xs text-slate-400">gotsx 企业管理示例</p>
+        <div class="card fade-up w-full max-w-sm p-8">
+          <div class="mb-6 flex flex-col items-center text-center">
+            <span class="flex h-10 w-10 items-center justify-center rounded-md bg-primary font-mono text-base font-semibold text-primary-foreground">g</span>
+            <h1 class="mt-4 text-lg font-semibold tracking-tight">登录后台</h1>
+            <p class="mt-1 text-sm text-muted-foreground">gotsx 企业管理示例</p>
           </div>
           <LoginForm />
-          <div class="mt-5 rounded-lg bg-slate-50 p-3 text-center text-xs text-slate-500">
-            演示账号:<b>admin</b> / <b>admin123</b> &nbsp;或&nbsp; <b>demo</b> / <b>demo</b>
-          </div>
+          <div class="separator my-5"></div>
+          <p class="text-center text-xs text-muted-foreground">
+            演示账号 <span class="kbd">admin</span> / <span class="kbd">admin123</span> 或 <span class="kbd">demo</span> / <span class="kbd">demo</span>
+          </p>
         </div>
       </body>
     </html>

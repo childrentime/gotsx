@@ -1,18 +1,2 @@
-@import "tailwindcss";
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
-  --color-brand-50: #eef4ff; --color-brand-100: #dbe6ff; --color-brand-200: #bcd0ff;
-  --color-brand-300: #8eb0ff; --color-brand-400: #5a86fc; --color-brand-500: #3563f0;
-  --color-brand-600: #244ad6; --color-brand-700: #1e3cad; --color-brand-800: #1e3688; --color-brand-900: #1d326d;
-}
-@keyframes shimmer { 100% { transform: translateX(100%); } }
-.skel { position: relative; overflow: hidden; background: #eef0f3; border-radius: 6px; }
-.skel::after { content:""; position:absolute; inset:0; transform:translateX(-100%);
-  background:linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: shimmer 1.3s infinite; }
-#gotsx-bar { position: fixed; top:0; left:0; height:3px; width:0; z-index:60;
-  background: linear-gradient(90deg, var(--color-brand-500), #22d3ee); box-shadow:0 0 8px rgba(53,99,240,.6); transition:width .2s, opacity .3s; opacity:0; }
-@keyframes toastIn { from { opacity:0; transform: translateY(-8px) } to { opacity:1; transform:none } }
-.toast-in { animation: toastIn .25s ease both; }
-@keyframes modalIn { from { opacity:0; transform: scale(.97) } to { opacity:1; transform:none } }
-.modal-in { animation: modalIn .18s ease both; }
-.line-clamp-1 { display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+/* admin: the shared gotsx UI design system (tokens + component classes), nothing app-specific */
+@import "../../design/gotsx.css";

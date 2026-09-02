@@ -1,4 +1,5 @@
 import { useState, useEffect, on } from "gotsx";
+import Icon from "../ui/Icon";
 
 export default function CartBadge({ count, label = "" }: { count: number; label?: string }) {
   const [n, setN] = useState(count);
@@ -11,10 +12,10 @@ export default function CartBadge({ count, label = "" }: { count: number; label?
     });
   });
   return (
-    <a href="/cart" class="relative flex shrink-0 items-center gap-1.5 rounded-full bg-ink-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600">
-      <span class="text-base">🛒</span>
+    <a href="/cart" class="btn btn-outline relative shrink-0">
+      <Icon name="cart" />
       <span class="hidden sm:inline">{label}</span>
-      {n > 0 && <span class={beat ? "heart-pop absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1 text-[11px] font-bold text-white ring-2 ring-white" : "absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1 text-[11px] font-bold text-white ring-2 ring-white"}>{n}</span>}
+      {n > 0 && <span class={beat ? "heart-pop absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground tabular-nums" : "absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground tabular-nums"}>{n}</span>}
     </a>
   );
 }

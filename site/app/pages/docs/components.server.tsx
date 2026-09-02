@@ -31,7 +31,7 @@ export default function Components({ locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   return (
     <DocsLayout title={loc(lc, "Component library", "组件库")} active="components" locale={lc} path={path}>
-      <p class="text-[15px] leading-7 text-zinc-700 dark:text-zinc-300">
+      <p class="text-[15px] leading-7">
         {loc(lc, "Every component on this site is written in the dialect under ", "这个站的所有组件都用方言写在 ")}<code class="font-mono text-sm">site/app/ui/</code>{loc(lc, ", styled with Tailwind classes. They are ", ", 样式是 Tailwind class。它们是")}<strong>{loc(lc, "shared components", "共享组件")}</strong>{loc(lc, ": one source, compiled to Go on the server and to DOM instructions on the client, so they can appear in pages and in islands alike. The API deliberately looks like MUI / shadcn; the implementation is entirely its own.", ": 同一份源码, 服务端编成 Go, 客户端编成 DOM 指令, 所以既能出现在页面里, 也能出现在岛里。API 刻意长得像 MUI / shadcn, 实现完全是自己的。")}
       </p>
       <Callout kind="warn" title={loc(lc, "Why not MUI", "为什么不用 MUI")}>
@@ -39,7 +39,7 @@ export default function Components({ locale, path }: PageProps) {
       </Callout>
 
       <Section title="Button" lead="ui/Button.tsx · variant / size / href / disabled / onClick">
-        <div class="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
+        <div class="flex flex-wrap items-center gap-3 rounded-lg border border-border p-5">
           <Button>{loc(lc, "Primary", "主要")}</Button>
           <Button variant="secondary">{loc(lc, "Secondary", "次要")}</Button>
           <Button variant="outline">{loc(lc, "Outline", "描边")}</Button>
@@ -51,11 +51,11 @@ export default function Components({ locale, path }: PageProps) {
         <CodeBlock code={demoA} lang="tsx" title={loc(lc, "usage", "用法")} />
         <CodeBlock code={sampleButton} lang="tsx" title={loc(lc, "ui/Button.tsx (excerpt): destructured defaults + a ternary choosing the element type", "ui/Button.tsx(节选): 解构默认值 + 三元选择元素类型")} />
         <p class="mt-2">{loc(lc, "Use the same Button inside an island — its children are reactive text, prerendered by the server and taken over by the browser:", "在岛里用同一个 Button——它的 children 是响应式文本, 服务端预渲染, 浏览器接管:")}</p>
-        <div class="rounded-xl border border-zinc-200 p-5 dark:border-zinc-800"><ButtonPlayground /></div>
+        <div class="rounded-lg border border-border p-5"><ButtonPlayground /></div>
       </Section>
 
       <Section title="Badge" lead="ui/Badge.tsx · color">
-        <div class="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
+        <div class="flex flex-wrap items-center gap-2 rounded-lg border border-border p-5">
           <Badge>{loc(lc, "Default", "默认")}</Badge>
           <Badge color="brand">brand</Badge>
           <Badge color="green">green</Badge>
@@ -67,7 +67,7 @@ export default function Components({ locale, path }: PageProps) {
 
       <Section title="Card / Stat / Callout" lead={loc(lc, "Three containers for server-side layout", "服务端布局用的三个容器")}>
         <div class="grid gap-4 sm:grid-cols-3">
-          <Card icon="🧩" title="Card">{loc(lc, "A container with an icon and title; children is any node.", "带 icon 和 title 的容器, children 是任意节点。")}</Card>
+          <Card icon="box" title="Card">{loc(lc, "A container with an icon and title; children is any node.", "带 icon 和 title 的容器, children 是任意节点。")}</Card>
           <Stat value="30 µs" label={loc(lc, "Stat: a number + a caption", "Stat: 数字 + 说明")} />
           <Card title={loc(lc, "Nested", "嵌套")}>
             <Badge color="green">{loc(lc, "Components nest arbitrarily", "组件可以任意嵌套")}</Badge>
@@ -81,7 +81,7 @@ export default function Components({ locale, path }: PageProps) {
         <CodeTabs tabs={[
           { label: "tsx", tokens: tokens(demoA, "tsx") },
           { label: "go", tokens: tokens(`func Hello(name string) gotsx.Node {\n\treturn gotsx.El("p", nil, gotsx.Text("hi " + name))\n}`, "go") },
-          { label: "css", tokens: tokens(`@import "tailwindcss";\n.card { @apply rounded-xl border; }`, "css") },
+          { label: "css", tokens: tokens(`@import "tailwindcss";\n.card { @apply rounded-lg border; }`, "css") },
         ]} />
       </Section>
 
