@@ -21,7 +21,7 @@ export default function Language({ locale, path }: PageProps) {
       </Callout>
 
       <Section title={loc(lc, "Syntax table", "语法表")} lead={loc(lc, `${ok} supported, ${total - ok} explicitly unsupported (they error). This table is itself an island: the filtering happens in the browser.`, `${ok} 项支持, ${total - ok} 项明确不支持(会报错)。这张表本身是一个岛: 过滤在浏览器里完成。`)}>
-        <SyntaxSearch rows={rows} />
+        <SyntaxSearch rows={rows} locale={lc} />
       </Section>
 
       <Section title={loc(lc, "Reactivity rules", "响应性规则")} lead={loc(lc, "The client update model is decided by the compiler; there's no such thing as hooks call order", "客户端的更新模型由编译器决定, 没有 hooks 调用顺序这回事")}>
