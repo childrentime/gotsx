@@ -2,10 +2,13 @@ node_modules/
 .next/
 dist/
 .astro/
-*/products.json
-*/shared.css
-*/src/products.json
-*/src/shared.css
+# copies of data/products.json and shared.css made by run.py for the Node contenders
+nextjs/products.json
+nextjs/shared.css
+hono/products.json
+hono/shared.css
+astro/src/products.json
+astro/src/shared.css
 gotsx/gen/
 gotsx/.gotsx/
 gotsx/app/.gen/
@@ -13,4 +16,3 @@ stdlib/stdlib
 gin/gin
 templ/templ
 load/load
-results/*.json

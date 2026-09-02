@@ -1,0 +1,652 @@
+[
+ {
+  "id": "p001",
+  "title": "Wireless Earbuds",
+  "brand": "Northwind",
+  "desc": "Built to last, designed to disappear.",
+  "price": 990,
+  "tags": [
+   "bestseller",
+   "new",
+   "eco"
+  ],
+  "rating": 3.5
+ },
+ {
+  "id": "p002",
+  "title": "Foldable Speaker Pro",
+  "brand": "Acme",
+  "desc": "Ships in 24h from our own warehouse.",
+  "price": 1721,
+  "tags": [
+   "new",
+   "office",
+   "audio"
+  ],
+  "rating": 3.6
+ },
+ {
+  "id": "p003",
+  "title": "Compact Desk Lamp Mini",
+  "brand": "Halcyon",
+  "desc": "Free returns within 30 days.",
+  "price": 2452,
+  "tags": [
+   "eco",
+   "audio",
+   "eco"
+  ],
+  "rating": 3.7
+ },
+ {
+  "id": "p004",
+  "title": "Ceramic Mug Max",
+  "brand": "Orbit",
+  "desc": "Machined from a single block.",
+  "price": 3183,
+  "tags": [
+   "gift",
+   "bestseller",
+   "audio"
+  ],
+  "rating": 3.8
+ },
+ {
+  "id": "p005",
+  "title": "Titanium Keyboard Lite",
+  "brand": "Fieldstone",
+  "desc": "Now with a quieter motor.",
+  "price": 3914,
+  "tags": [
+   "office",
+   "gift",
+   "eco"
+  ],
+  "rating": 3.9
+ },
+ {
+  "id": "p006",
+  "title": "Ergonomic Chair Cushion",
+  "brand": "Lumen",
+  "desc": "Two colours, one price.",
+  "price": 4645,
+  "tags": [
+   "travel",
+   "home",
+   "audio"
+  ],
+  "rating": 4.0
+ },
+ {
+  "id": "p007",
+  "title": "Modular Notebook Pro",
+  "brand": "Kestrel",
+  "desc": "Our most requested restock.",
+  "price": 5376,
+  "tags": [
+   "home",
+   "limited",
+   "eco"
+  ],
+  "rating": 4.1
+ },
+ {
+  "id": "p008",
+  "title": "Portable Phone Stand Mini",
+  "brand": "Marlow",
+  "desc": "Fits in any bag.",
+  "price": 6107,
+  "tags": [
+   "audio",
+   "eco",
+   "audio"
+  ],
+  "rating": 4.2
+ },
+ {
+  "id": "p009",
+  "title": "Smart Charger Max",
+  "brand": "Northwind",
+  "desc": "Built to last, designed to disappear.",
+  "price": 6838,
+  "tags": [
+   "usb-c",
+   "travel",
+   "eco"
+  ],
+  "rating": 4.3
+ },
+ {
+  "id": "p010",
+  "title": "Linen Water Bottle Lite",
+  "brand": "Acme",
+  "desc": "Ships in 24h from our own warehouse.",
+  "price": 7569,
+  "tags": [
+   "limited",
+   "usb-c",
+   "audio"
+  ],
+  "rating": 4.4
+ },
+ {
+  "id": "p011",
+  "title": "Wireless Monitor Arm",
+  "brand": "Halcyon",
+  "desc": "Free returns within 30 days.",
+  "price": 8300,
+  "tags": [
+   "bestseller",
+   "new",
+   "eco"
+  ],
+  "rating": 4.5
+ },
+ {
+  "id": "p012",
+  "title": "Foldable Backpack Pro",
+  "brand": "Orbit",
+  "desc": "Machined from a single block.",
+  "price": 9031,
+  "tags": [
+   "new",
+   "office",
+   "audio"
+  ],
+  "rating": 4.6
+ },
+ {
+  "id": "p013",
+  "title": "Compact Earbuds Mini",
+  "brand": "Fieldstone",
+  "desc": "Now with a quieter motor.",
+  "price": 9762,
+  "tags": [
+   "eco",
+   "audio",
+   "eco"
+  ],
+  "rating": 4.7
+ },
+ {
+  "id": "p014",
+  "title": "Ceramic Speaker Max",
+  "brand": "Lumen",
+  "desc": "Two colours, one price.",
+  "price": 10493,
+  "tags": [
+   "gift",
+   "bestseller",
+   "audio"
+  ],
+  "rating": 4.8
+ },
+ {
+  "id": "p015",
+  "title": "Titanium Desk Lamp Lite",
+  "brand": "Kestrel",
+  "desc": "Our most requested restock.",
+  "price": 11224,
+  "tags": [
+   "office",
+   "gift",
+   "eco"
+  ],
+  "rating": 4.9
+ },
+ {
+  "id": "p016",
+  "title": "Ergonomic Mug",
+  "brand": "Marlow",
+  "desc": "Fits in any bag.",
+  "price": 11955,
+  "tags": [
+   "travel",
+   "home",
+   "audio"
+  ],
+  "rating": 3.5
+ },
+ {
+  "id": "p017",
+  "title": "Modular Keyboard Pro",
+  "brand": "Northwind",
+  "desc": "Built to last, designed to disappear.",
+  "price": 12686,
+  "tags": [
+   "home",
+   "limited",
+   "eco"
+  ],
+  "rating": 3.6
+ },
+ {
+  "id": "p018",
+  "title": "Portable Chair Cushion Mini",
+  "brand": "Acme",
+  "desc": "Ships in 24h from our own warehouse.",
+  "price": 13417,
+  "tags": [
+   "audio",
+   "eco",
+   "audio"
+  ],
+  "rating": 3.7
+ },
+ {
+  "id": "p019",
+  "title": "Smart Notebook Max",
+  "brand": "Halcyon",
+  "desc": "Free returns within 30 days.",
+  "price": 14148,
+  "tags": [
+   "usb-c",
+   "travel",
+   "eco"
+  ],
+  "rating": 3.8
+ },
+ {
+  "id": "p020",
+  "title": "Linen Phone Stand Lite",
+  "brand": "Orbit",
+  "desc": "Machined from a single block.",
+  "price": 14879,
+  "tags": [
+   "limited",
+   "usb-c",
+   "audio"
+  ],
+  "rating": 3.9
+ },
+ {
+  "id": "p021",
+  "title": "Wireless Charger",
+  "brand": "Fieldstone",
+  "desc": "Now with a quieter motor.",
+  "price": 15610,
+  "tags": [
+   "bestseller",
+   "new",
+   "eco"
+  ],
+  "rating": 4.0
+ },
+ {
+  "id": "p022",
+  "title": "Foldable Water Bottle Pro",
+  "brand": "Lumen",
+  "desc": "Two colours, one price.",
+  "price": 16341,
+  "tags": [
+   "new",
+   "office",
+   "audio"
+  ],
+  "rating": 4.1
+ },
+ {
+  "id": "p023",
+  "title": "Compact Monitor Arm Mini",
+  "brand": "Kestrel",
+  "desc": "Our most requested restock.",
+  "price": 17072,
+  "tags": [
+   "eco",
+   "audio",
+   "eco"
+  ],
+  "rating": 4.2
+ },
+ {
+  "id": "p024",
+  "title": "Ceramic Backpack Max",
+  "brand": "Marlow",
+  "desc": "Fits in any bag.",
+  "price": 17803,
+  "tags": [
+   "gift",
+   "bestseller",
+   "audio"
+  ],
+  "rating": 4.3
+ },
+ {
+  "id": "p025",
+  "title": "Titanium Earbuds Lite",
+  "brand": "Northwind",
+  "desc": "Built to last, designed to disappear.",
+  "price": 18534,
+  "tags": [
+   "office",
+   "gift",
+   "eco"
+  ],
+  "rating": 4.4
+ },
+ {
+  "id": "p026",
+  "title": "Ergonomic Speaker",
+  "brand": "Acme",
+  "desc": "Ships in 24h from our own warehouse.",
+  "price": 19265,
+  "tags": [
+   "travel",
+   "home",
+   "audio"
+  ],
+  "rating": 4.5
+ },
+ {
+  "id": "p027",
+  "title": "Modular Desk Lamp Pro",
+  "brand": "Halcyon",
+  "desc": "Free returns within 30 days.",
+  "price": 996,
+  "tags": [
+   "home",
+   "limited",
+   "eco"
+  ],
+  "rating": 4.6
+ },
+ {
+  "id": "p028",
+  "title": "Portable Mug Mini",
+  "brand": "Orbit",
+  "desc": "Machined from a single block.",
+  "price": 1727,
+  "tags": [
+   "audio",
+   "eco",
+   "audio"
+  ],
+  "rating": 4.7
+ },
+ {
+  "id": "p029",
+  "title": "Smart Keyboard Max",
+  "brand": "Fieldstone",
+  "desc": "Now with a quieter motor.",
+  "price": 2458,
+  "tags": [
+   "usb-c",
+   "travel",
+   "eco"
+  ],
+  "rating": 4.8
+ },
+ {
+  "id": "p030",
+  "title": "Linen Chair Cushion Lite",
+  "brand": "Lumen",
+  "desc": "Two colours, one price.",
+  "price": 3189,
+  "tags": [
+   "limited",
+   "usb-c",
+   "audio"
+  ],
+  "rating": 4.9
+ },
+ {
+  "id": "p031",
+  "title": "Wireless Notebook",
+  "brand": "Kestrel",
+  "desc": "Our most requested restock.",
+  "price": 3920,
+  "tags": [
+   "bestseller",
+   "new",
+   "eco"
+  ],
+  "rating": 3.5
+ },
+ {
+  "id": "p032",
+  "title": "Foldable Phone Stand Pro",
+  "brand": "Marlow",
+  "desc": "Fits in any bag.",
+  "price": 4651,
+  "tags": [
+   "new",
+   "office",
+   "audio"
+  ],
+  "rating": 3.6
+ },
+ {
+  "id": "p033",
+  "title": "Compact Charger Mini",
+  "brand": "Northwind",
+  "desc": "Built to last, designed to disappear.",
+  "price": 5382,
+  "tags": [
+   "eco",
+   "audio",
+   "eco"
+  ],
+  "rating": 3.7
+ },
+ {
+  "id": "p034",
+  "title": "Ceramic Water Bottle Max",
+  "brand": "Acme",
+  "desc": "Ships in 24h from our own warehouse.",
+  "price": 6113,
+  "tags": [
+   "gift",
+   "bestseller",
+   "audio"
+  ],
+  "rating": 3.8
+ },
+ {
+  "id": "p035",
+  "title": "Titanium Monitor Arm Lite",
+  "brand": "Halcyon",
+  "desc": "Free returns within 30 days.",
+  "price": 6844,
+  "tags": [
+   "office",
+   "gift",
+   "eco"
+  ],
+  "rating": 3.9
+ },
+ {
+  "id": "p036",
+  "title": "Ergonomic Backpack",
+  "brand": "Orbit",
+  "desc": "Machined from a single block.",
+  "price": 7575,
+  "tags": [
+   "travel",
+   "home",
+   "audio"
+  ],
+  "rating": 4.0
+ },
+ {
+  "id": "p037",
+  "title": "Modular Earbuds Pro",
+  "brand": "Fieldstone",
+  "desc": "Now with a quieter motor.",
+  "price": 8306,
+  "tags": [
+   "home",
+   "limited",
+   "eco"
+  ],
+  "rating": 4.1
+ },
+ {
+  "id": "p038",
+  "title": "Portable Speaker Mini",
+  "brand": "Lumen",
+  "desc": "Two colours, one price.",
+  "price": 9037,
+  "tags": [
+   "audio",
+   "eco",
+   "audio"
+  ],
+  "rating": 4.2
+ },
+ {
+  "id": "p039",
+  "title": "Smart Desk Lamp Max",
+  "brand": "Kestrel",
+  "desc": "Our most requested restock.",
+  "price": 9768,
+  "tags": [
+   "usb-c",
+   "travel",
+   "eco"
+  ],
+  "rating": 4.3
+ },
+ {
+  "id": "p040",
+  "title": "Linen Mug Lite",
+  "brand": "Marlow",
+  "desc": "Fits in any bag.",
+  "price": 10499,
+  "tags": [
+   "limited",
+   "usb-c",
+   "audio"
+  ],
+  "rating": 4.4
+ },
+ {
+  "id": "p041",
+  "title": "Wireless Keyboard",
+  "brand": "Northwind",
+  "desc": "Built to last, designed to disappear.",
+  "price": 11230,
+  "tags": [
+   "bestseller",
+   "new",
+   "eco"
+  ],
+  "rating": 4.5
+ },
+ {
+  "id": "p042",
+  "title": "Foldable Chair Cushion Pro",
+  "brand": "Acme",
+  "desc": "Ships in 24h from our own warehouse.",
+  "price": 11961,
+  "tags": [
+   "new",
+   "office",
+   "audio"
+  ],
+  "rating": 4.6
+ },
+ {
+  "id": "p043",
+  "title": "Compact Notebook Mini",
+  "brand": "Halcyon",
+  "desc": "Free returns within 30 days.",
+  "price": 12692,
+  "tags": [
+   "eco",
+   "audio",
+   "eco"
+  ],
+  "rating": 4.7
+ },
+ {
+  "id": "p044",
+  "title": "Ceramic Phone Stand Max",
+  "brand": "Orbit",
+  "desc": "Machined from a single block.",
+  "price": 13423,
+  "tags": [
+   "gift",
+   "bestseller",
+   "audio"
+  ],
+  "rating": 4.8
+ },
+ {
+  "id": "p045",
+  "title": "Titanium Charger Lite",
+  "brand": "Fieldstone",
+  "desc": "Now with a quieter motor.",
+  "price": 14154,
+  "tags": [
+   "office",
+   "gift",
+   "eco"
+  ],
+  "rating": 4.9
+ },
+ {
+  "id": "p046",
+  "title": "Ergonomic Water Bottle",
+  "brand": "Lumen",
+  "desc": "Two colours, one price.",
+  "price": 14885,
+  "tags": [
+   "travel",
+   "home",
+   "audio"
+  ],
+  "rating": 3.5
+ },
+ {
+  "id": "p047",
+  "title": "Modular Monitor Arm Pro",
+  "brand": "Kestrel",
+  "desc": "Our most requested restock.",
+  "price": 15616,
+  "tags": [
+   "home",
+   "limited",
+   "eco"
+  ],
+  "rating": 3.6
+ },
+ {
+  "id": "p048",
+  "title": "Portable Backpack Mini",
+  "brand": "Marlow",
+  "desc": "Fits in any bag.",
+  "price": 16347,
+  "tags": [
+   "audio",
+   "eco",
+   "audio"
+  ],
+  "rating": 3.7
+ },
+ {
+  "id": "p049",
+  "title": "Smart Earbuds Max",
+  "brand": "Northwind",
+  "desc": "Built to last, designed to disappear.",
+  "price": 17078,
+  "tags": [
+   "usb-c",
+   "travel",
+   "eco"
+  ],
+  "rating": 3.8
+ },
+ {
+  "id": "p050",
+  "title": "Linen Speaker Lite",
+  "brand": "Acme",
+  "desc": "Ships in 24h from our own warehouse.",
+  "price": 17809,
+  "tags": [
+   "limited",
+   "usb-c",
+   "audio"
+  ],
+  "rating": 3.9
+ }
+]
