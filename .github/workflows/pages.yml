@@ -19,7 +19,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Static-export the docs site (gotsx export: build, crawl every route, rewrite the repo subpath)
+      - name: Static-export the docs site with gotsx export (build, crawl every route, rewrite the repo subpath)
         run: |
           go run ./cmd/gotsx tailwind
           go run ./cmd/gotsx export site --out dist --base /${{ github.event.repository.name }} --site https://${{ github.repository_owner }}.github.io
