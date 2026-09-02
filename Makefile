@@ -1,5 +1,5 @@
 # gotsx —— TSX 方言 → Go 原生的全栈框架
-APPS := example site shop
+APPS := example site shop admin
 
 .PHONY: help gen build test test-fast lint dev-% tailwind clean fmt
 
