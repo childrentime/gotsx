@@ -75,8 +75,10 @@ func parseExportArgs(args []string) (string, exportOpts, error) {
 	if o.base != "" && !strings.HasPrefix(o.base, "/") {
 		o.base = "/" + o.base
 	}
-	if !filepath.IsAbs(o.out) {
-		o.out = filepath.Join(abs, o.out)
+	if !filepath.IsAbs(o.out) { // relative to the working directory, like every other CLI (`gotsx export site --out dist` → ./dist)
+		if o.out, err = filepath.Abs(o.out); err != nil {
+			return "", o, err
+		}
 	}
 	return abs, o, nil
 }
