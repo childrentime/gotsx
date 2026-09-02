@@ -24,6 +24,8 @@ make check      # gotsx check on every demo app (what the LSP runs)
 make dev-shop   # dev server with live reload (dev-site / dev-admin / dev-example)
 make lint fmt   # go vet / gofmt
 go run ./cmd/gotsx tailwind   # once: Tailwind standalone binary into .tools/ (no Node)
+python3 bench/run.py --duration 2   # benchmark harness smoke test only — published numbers come from the Benchmark workflow
+python3 bench/update_docs.py        # after the workflow committed bench/results/: rewrite the README tables
 ```
 
 A prebuilt CLI for parallel work: `go build -o .tools/gotsx-stable ./cmd/gotsx`, then `.tools/gotsx-stable build <app>`.

@@ -47,9 +47,9 @@ export default function Home({ query, locale, path }: PageProps) {
       <section class="border-y border-border bg-muted/30">
         <div class="container-page grid gap-4 py-10 sm:grid-cols-2 lg:grid-cols-4">
           <Stat value="15 µs" label={loc(lc, "50-item list page rendered in Go (in-process)", "50 件商品的列表页在 Go 里渲染完(进程内)")} />
-          <Stat value="13k req/s" label={loc(lc, "4-vCPU GitHub runner, 64 connections — same as templ, 50× Next.js", "4 vCPU 的 GitHub runner, 64 连接 —— 与 templ 持平, Next.js 的 50 倍")} />
-          <Stat value="22 MB" label={loc(lc, "peak memory under load (Next.js: 377 MB)", "负载下的峰值内存(Next.js: 377 MB)")} />
-          <Stat value="6 KB" label={loc(lc, "client runtime, gzipped (the morph library loads lazily)", "客户端运行时, gzip 后(morph 库懒加载)")} />
+          <Stat value="20k req/s" label={loc(lc, "4-vCPU GitHub runner, 64 connections — same as templ, ~65× Next.js", "4 vCPU 的 GitHub runner, 64 连接 —— 与 templ 持平, 约 Next.js 的 65 倍")} />
+          <Stat value="21 MB" label={loc(lc, "peak memory under load (Next.js: 387 MB)", "负载下的峰值内存(Next.js: 387 MB)")} />
+          <Stat value="9 KB" label={loc(lc, "first-load JS, gzipped (runtime + loader + islands)", "首屏 JS, gzip 后(运行时 + 加载器 + 岛)")} />
         </div>
       </section>
 
