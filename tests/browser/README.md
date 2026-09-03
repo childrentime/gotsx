@@ -4,6 +4,7 @@ Real-Chromium checks of the demos and of a fresh `gotsx new` scaffold, using Pyt
 
 | suite | what it drives |
 |---|---|
+| `spa.py` | SPA navigation on the example: no reload, streaming morph (shell before the slow Suspense query), head merge, scroll restoration on back, native anchors, focus + route announcer |
 | `example_action.py` | the Like button: a typed action round trip (`POST /_gotsx/act/data/like`, marker header, count updates) |
 | `shop.py` | 41 assertions: meta titles, JSON-LD, feed/related actions, cart, wishlist, checkout validation and flash, `/zh`, 404s, CSRF |
 | `admin.py` | 33 assertions: session login/logout, 401/403, user CRUD through actions, field errors, toasts, 404 page |

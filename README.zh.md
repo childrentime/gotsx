@@ -138,7 +138,7 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 - **页面 meta**: 页面旁边 `export function meta(props: PageProps): Meta`; 布局把 `props.meta`(`title`、`description`、`canonical`、`image`、`noIndex`)渲染进 `<head>`。
 - **文件路由**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; 更具体的路由优先。**嵌套布局**: `pages/**/_layout.server.tsx`(`LayoutProps` = `PageProps` + `meta` + `children`)包住其下的页面; `_404` / `_error` 变成 `gen.NotFound` / `gen.ErrorPage`。`redirect(url, status?)` 与 `notFound()` 中断渲染。
 - **流式 SSR**: `<Suspense fallback={…}>` 随外壳先发 fallback, children 在外壳 flush 之后**于自己的 goroutine 里**渲染; 多个边界并发求值、谁先完成先流入(乱序、可嵌套、错误隔离)。语言里没有 async: 慢的宿主调用就放进边界。
-- **岛 + SPA 跳转**: 页面零 JS; 岛按需加载; 跳转拉 HTML 再 morph(idiomorph), 岛按 DOM 同一性存活, 状态不丢; 顶部进度条与悬停预取让它秒开。
+- **岛 + SPA 跳转**: 页面零 JS; 岛按需加载; 跳转拉 HTML 再 morph(idiomorph), 岛按 DOM 同一性存活, 状态不丢。外壳一到就 morph, `Suspense` 填充继续流入; 前进/后退从快照缓存秒回并恢复滚动位置; 每页的 `<head>` 元数据会合并; 页内锚点交给浏览器; 焦点移到 `<main>`(或 `[data-gotsx-focus]`), 路由播报器把新标题告诉读屏软件; 顶部进度条与悬停预取让它秒开。
 - **keyed 列表**: `xs.map((x) => <li key={x.id}>…</li>)` 按 key 复用 / 移动 / 销毁 DOM —— 输入框、焦点、行内 effect 在重排后都保留; 不写 `key` 的列表和以前一样整块重建。
 - **走位 hydrate**: 服务端只标记响应式的文本/条件/列表; 客户端按同一编译器给出的顺序认领节点, 复用现有 DOM, 不 diff。
 - **Cookie / 中间件**: 请求 cookie 进 `PageProps.Cookies`; `Options.Before` 钩子可以种 cookie 或做鉴权; `Options.Middleware` 是标准中间件链。
@@ -175,13 +175,13 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 <!-- BENCH:SUMMARY -->
 | | gotsx | templ | html/template | Gin | Hono (Bun) | Astro 7 | Next.js 16 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| req/s | **19,620** | 20,789 | 5,257 | 4,981 | 3,918 | 1,675 | 294 |
-| p50 | 2.0 ms | 2.8 ms | 8.0 ms | 8.6 ms | 15.9 ms | 37.3 ms | 214.1 ms |
-| 峰值内存 | 21 MB | 17 MB | 20 MB | 27 MB | 76 MB | 215 MB | 387 MB |
-| 冷启动 | 20 ms | 11 ms | 11 ms | 11 ms | 27 ms | 170 ms | 516 ms |
-| 单核 req/s | **13,234** | 9,183 | 2,360 | 2,313 | 3,970 | 1,676 | 313 |
+| req/s | **12,712** | 13,013 | 3,656 | 3,372 | 2,915 | 1,441 | 242 |
+| p50 | 2.8 ms | 4.1 ms | 9.8 ms | 11.1 ms | 21.2 ms | 43.2 ms | 262.2 ms |
+| 峰值内存 | 20 MB | 17 MB | 20 MB | 26 MB | 78 MB | 228 MB | 386 MB |
+| 冷启动 | 22 ms | 11 ms | 11 ms | 12 ms | 40 ms | 206 ms | 718 ms |
+| 单核 req/s | **6,939** | 4,899 | 1,635 | 1,583 | 2,938 | 1,454 | 262 |
 
-<sub>runner: INTEL(R) XEON(R) PLATINUM 8573C (4 vCPU), 64 连接, 2026-09-02</sub>
+<sub>runner: AMD EPYC 7763 64-Core Processor (4 vCPU), 64 连接, 2026-09-03</sub>
 <!-- /BENCH:SUMMARY -->
 
 完整表格(构建时间、产物体积、HTML/JS 字节)与各框架优劣的对比见 [`bench/README.md`](bench/README.md)。

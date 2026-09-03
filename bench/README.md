@@ -32,40 +32,40 @@ the README. Numbers from a laptop are not published.
 ## Results
 
 <!-- BENCH:ALL -->
-**GitHub-hosted runner (`ubuntu-latest`): INTEL(R) XEON(R) PLATINUM 8573C (4 vCPU) · go1.26.7 linux/amd64 · node v22.23.2 · bun 1.4.0 · 64 connections · 15 s per contender · 2026-09-02.** Raw data: [`results/`](results/). Runner hardware varies between runs (AMD EPYC or Intel Xeon); ratios are stable, absolute numbers move ±30%.
+**GitHub-hosted runner (`ubuntu-latest`): AMD EPYC 7763 64-Core Processor (4 vCPU) · go1.26.7 linux/amd64 · node v22.23.2 · bun 1.4.0 · 64 connections · 15 s per contender · 2026-09-03.** Raw data: [`results/`](results/). Runner hardware varies between runs (AMD EPYC or Intel Xeon); ratios are stable, absolute numbers move ±30%.
 
 All cores (Go servers use all 4 vCPUs; Node and Bun are single-threaded):
 
 | framework | req/s | p50 | p99 | peak RSS | cold start | build | artifact | HTML | JS (gz) | note |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| gotsx | 19,620 | 1.96 ms | 14.26 ms | 21.2 MB | 20 ms | 3.04 s | 10.2 MB | 14.3 KB | 24.3 KB (9.2) | production mode: CSP nonce, security headers, request logging off |
-| stdlib | 5,257 | 8.01 ms | 54.35 ms | 20.3 MB | 11 ms | 1.14 s | 12.2 MB | 14.4 KB | 0.0 KB (0.0) | net/http + html/template |
-| gin | 4,981 | 8.60 ms | 61.88 ms | 27.2 MB | 11 ms | 16.24 s | 30.5 MB | 14.4 KB | 0.0 KB (0.0) | gin release mode + html/template |
-| templ | 20,789 | 2.80 ms | 9.41 ms | 17.0 MB | 11 ms | 0.7 s | 9.4 MB | 13.9 KB | 0.0 KB (0.0) | a-h/templ generated Go |
-| nextjs | 294 | 214.12 ms | 278.26 ms | 386.8 MB | 516 ms | 5.17 s | 500.7 MB | 50.8 KB | 442.8 KB (127.4) | App Router, force-dynamic, next start |
-| astro | 1,675 | 37.30 ms | 57.36 ms | 215.0 MB | 170 ms | 1.48 s | 250.4 MB | 23.7 KB | 15.8 KB (6.5) | output: server, node adapter, preact island |
-| hono | 3,918 | 15.92 ms | 31.08 ms | 76.0 MB | 27 ms | 0.0 s | 1.4 MB | 14.4 KB | 0.0 KB (0.0) | hono/jsx on bun, SSR only |
+| gotsx | 12,712 | 2.79 ms | 22.41 ms | 20.4 MB | 22 ms | 3.3 s | 10.3 MB | 14.3 KB | 27.8 KB (10.6) | production mode: CSP nonce, security headers, request logging off |
+| stdlib | 3,656 | 9.83 ms | 85.14 ms | 20.3 MB | 11 ms | 0.91 s | 12.2 MB | 14.4 KB | 0.0 KB (0.0) | net/http + html/template |
+| gin | 3,372 | 11.13 ms | 104.47 ms | 26.0 MB | 12 ms | 18.35 s | 30.5 MB | 14.4 KB | 0.0 KB (0.0) | gin release mode + html/template |
+| templ | 13,013 | 4.10 ms | 17.71 ms | 17.0 MB | 11 ms | 0.78 s | 9.4 MB | 13.9 KB | 0.0 KB (0.0) | a-h/templ generated Go |
+| nextjs | 242 | 262.20 ms | 306.16 ms | 386.5 MB | 718 ms | 6.0 s | 500.7 MB | 50.8 KB | 442.8 KB (127.4) | App Router, force-dynamic, next start |
+| astro | 1,441 | 43.19 ms | 62.60 ms | 227.5 MB | 206 ms | 1.96 s | 250.4 MB | 23.7 KB | 15.8 KB (6.5) | output: server, node adapter, preact island |
+| hono | 2,915 | 21.19 ms | 41.77 ms | 77.9 MB | 40 ms | 0.0 s | 1.4 MB | 14.4 KB | 0.0 KB (0.0) | hono/jsx on bun, SSR only |
 
 Go servers pinned to one core (`GOMAXPROCS=1`) — the per-core comparison (JS column not re-measured):
 
 | framework | req/s | p50 | p99 | peak RSS | cold start | build | artifact | HTML | JS (gz) | note |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| gotsx | 13,234 | 4.78 ms | 10.64 ms | 19.4 MB | 18 ms | 0.45 s | 10.2 MB | 14.3 KB | 0.0 KB (0.0) | production mode: CSP nonce, security headers, request logging off |
-| stdlib | 2,360 | 28.16 ms | 46.95 ms | 18.2 MB | 11 ms | 0.35 s | 12.2 MB | 14.4 KB | 0.0 KB (0.0) | net/http + html/template |
-| gin | 2,313 | 28.86 ms | 47.25 ms | 23.4 MB | 11 ms | 0.69 s | 30.5 MB | 14.4 KB | 0.0 KB (0.0) | gin release mode + html/template |
-| templ | 9,183 | 6.95 ms | 14.68 ms | 14.8 MB | 11 ms | 0.33 s | 9.4 MB | 13.9 KB | 0.0 KB (0.0) | a-h/templ generated Go |
-| nextjs | 313 | 200.60 ms | 250.45 ms | 139.9 MB | 18 ms | 1.86 s | 500.9 MB | 50.8 KB | 0.0 KB (0.0) | App Router, force-dynamic, next start |
-| astro | 1,676 | 36.96 ms | 68.98 ms | 233.7 MB | 168 ms | 1.41 s | 250.4 MB | 23.7 KB | 0.0 KB (0.0) | output: server, node adapter, preact island |
-| hono | 3,970 | 15.77 ms | 30.76 ms | 75.1 MB | 28 ms | 0.0 s | 1.4 MB | 14.4 KB | 0.0 KB (0.0) | hono/jsx on bun, SSR only |
+| gotsx | 6,939 | 9.23 ms | 19.15 ms | 17.6 MB | 21 ms | 0.55 s | 10.3 MB | 14.3 KB | 0.0 KB (0.0) | production mode: CSP nonce, security headers, request logging off |
+| stdlib | 1,635 | 41.23 ms | 59.15 ms | 18.0 MB | 11 ms | 0.42 s | 12.2 MB | 14.4 KB | 0.0 KB (0.0) | net/http + html/template |
+| gin | 1,583 | 43.87 ms | 66.51 ms | 23.5 MB | 11 ms | 0.81 s | 30.5 MB | 14.4 KB | 0.0 KB (0.0) | gin release mode + html/template |
+| templ | 4,899 | 13.10 ms | 24.32 ms | 14.7 MB | 11 ms | 0.39 s | 9.4 MB | 13.9 KB | 0.0 KB (0.0) | a-h/templ generated Go |
+| nextjs | 262 | 244.32 ms | 268.57 ms | 157.0 MB | 16 ms | 2.16 s | 500.9 MB | 50.8 KB | 0.0 KB (0.0) | App Router, force-dynamic, next start |
+| astro | 1,454 | 42.51 ms | 64.64 ms | 224.2 MB | 206 ms | 1.87 s | 250.4 MB | 23.7 KB | 0.0 KB (0.0) | output: server, node adapter, preact island |
+| hono | 2,938 | 21.33 ms | 42.14 ms | 74.7 MB | 28 ms | 0.0 s | 1.4 MB | 14.4 KB | 0.0 KB (0.0) | hono/jsx on bun, SSR only |
 
 **Takeaways**
 
-- **Throughput / latency**: gotsx and templ, the two compiled-Go stacks, are within 6% of each other on 4 cores (19,620 vs 20,789 req/s); on one core gotsx is the fastest of the seven (13,234 req/s, p50 4.8 ms) because a page is straight-line writes with ~140 allocations. gotsx is 3.7× `html/template` (stdlib; Gin is the same template engine), 11.7× Astro and 66.8× Next.js, whose p50 is 214 ms.
-- **Memory**: the Go binaries peak at 17–27 MB under load; Hono/Bun 76 MB, Astro 215 MB, Next.js 387 MB.
-- **Cold start**: Go binaries answer within 20 ms of launch; Astro 170 ms, Next.js 516 ms.
+- **Throughput / latency**: gotsx and templ, the two compiled-Go stacks, are within 2% of each other on 4 cores (12,712 vs 13,013 req/s); on one core gotsx is the fastest of the seven (6,939 req/s, p50 9.2 ms) because a page is straight-line writes with ~140 allocations. gotsx is 3.5× `html/template` (stdlib; Gin is the same template engine), 8.8× Astro and 52.6× Next.js, whose p50 is 262 ms.
+- **Memory**: the Go binaries peak at 17–26 MB under load; Hono/Bun 78 MB, Astro 228 MB, Next.js 386 MB.
+- **Cold start**: Go binaries answer within 22 ms of launch; Astro 206 ms, Next.js 718 ms.
 - **Artifact**: 9–30 MB static binaries versus 250 MB (Astro) / 501 MB (Next.js) of `node_modules` + build output.
-- **What the browser downloads**: ~14 KB of HTML everywhere except Next.js (51 KB with the RSC payload). First-load JS, gzipped: Next.js 127 KB (React runtime + page chunks), gotsx 9.2 KB (signals runtime + loader + the island; the morphing library for SPA navigation loads on hover or first navigation), Astro 6.5 KB (Preact + island); the template stacks ship no framework JS but also have no hydration story.
-- **Build**: templ and plain Go build in under a second; gotsx adds `hostgen` (a `go run`) and the dialect compiler; Gin's 16 s is a cold module download on the runner; Next.js builds in 5 s.
+- **What the browser downloads**: ~14 KB of HTML everywhere except Next.js (51 KB with the RSC payload). First-load JS, gzipped: Next.js 127 KB (React runtime + page chunks), gotsx 10.6 KB (signals runtime + loader + the island; the morphing library for SPA navigation loads on hover or first navigation), Astro 6.5 KB (Preact + island); the template stacks ship no framework JS but also have no hydration story.
+- **Build**: templ and plain Go build in under a second; gotsx adds `hostgen` (a `go run`) and the dialect compiler; Gin's 18 s is a cold module download on the runner; Next.js builds in 6 s.
 <!-- /BENCH:ALL -->
 
 ## Reading the numbers

@@ -59,21 +59,32 @@ function reconcile() {
   });
 }
 
-/* ---------- SPA 跳转 ---------- */
+/* ---------- SPA navigation ----------
+   Full-page HTML morph (the Turbo / htmx-boost family): fetch the target document, morph <body> with idiomorph,
+   islands survive by DOM identity. On top of that: a snapshot cache so back/forward is instant, scroll restoration,
+   native same-page anchors, full <head> metadata merge, focus management + a route announcer, and streaming —
+   the shell is morphed as soon as </html> arrives while Suspense fills keep streaming in. */
+const stripHash = (u) => u.split("#")[0];
+
 function mergeHead(doc) {
   document.title = doc.title;
-  const m = doc.querySelector('meta[name="gotsx-render-us"]');
-  const mine = document.querySelector('meta[name="gotsx-render-us"]');
-  if (m && mine) mine.content = m.content;
+  const head = document.head, fresh = doc.head;
+  // per-page metadata is replaced wholesale; the viewport / charset metas and the framework's own bootstrap stay
+  const sel = 'meta[name]:not([name="viewport"]), meta[property], link[rel="canonical"], link[rel="alternate"], script[type="application/ld+json"]';
+  head.querySelectorAll(sel).forEach((n) => n.remove());
+  fresh.querySelectorAll(sel).forEach((n) => head.appendChild(n.cloneNode(true)));
+  // stylesheets the new page needs that this document lacks (old ones stay: no flash of unstyled content)
+  const have = new Set(Array.from(head.querySelectorAll('link[rel="stylesheet"][href]'), (l) => l.href));
+  fresh.querySelectorAll('link[rel="stylesheet"][href]').forEach((l) => { if (!have.has(l.href)) head.appendChild(l.cloneNode(true)); });
 }
 function keepIslands(oldNode, newNode) {
   if (oldNode.nodeType !== 1 || oldNode.tagName !== "GOTSX-ISLAND" || !oldNode.__gotsx || newNode.nodeType !== 1) return;
   oldNode.setAttribute("name", newNode.getAttribute("name"));
   oldNode.setAttribute("props", newNode.getAttribute("props") || "{}");
-  return false;     // 岛的子树归运行时管, morph 不碰
+  return false;     // the island's subtree belongs to the runtime; morph leaves it alone
 }
 
-/* 顶部导航进度条 */
+/* Top navigation progress bar */
 const bar = () => document.getElementById("gotsx-bar");
 let barTimer = null;
 function barStart() {
@@ -87,7 +98,29 @@ function barDone() {
   barTimer = setTimeout(() => { b.style.opacity = "0"; b.style.width = "0"; }, 250);
 }
 
-/* 预取: hover / touchstart 时把目标页 HTML 拉进缓存, 点击即秒开(Core Web Vitals) */
+/* Accessibility: move focus to the main landmark after a navigation and announce the new title to screen readers */
+let announcer = null;
+function announce(text) {
+  if (!announcer) {
+    announcer = document.createElement("div");
+    announcer.id = "gotsx-announcer";
+    announcer.setAttribute("role", "status");
+    announcer.setAttribute("aria-live", "assertive");
+    announcer.setAttribute("aria-atomic", "true");
+    announcer.setAttribute("style", "position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0");
+  }
+  if (!announcer.isConnected) document.body.appendChild(announcer);
+  announcer.textContent = "";
+  setTimeout(() => { announcer.textContent = text; }, 0);
+}
+function focusMain() {
+  const el = document.querySelector("[data-gotsx-focus]") || document.querySelector("main") || document.querySelector("h1");
+  if (!el) return;
+  if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+  try { el.focus({ preventScroll: true }); } catch { /* not focusable */ }
+}
+
+/* Prefetch: on hover / touchstart pull the target HTML into a cache so the click is instant (Core Web Vitals) */
 const prefetchCache = new Map();
 function prefetch(url) {
   if (prefetchCache.has(url)) return;
@@ -95,11 +128,11 @@ function prefetch(url) {
     .then(async (r) => ({ ok: r.ok && (r.headers.get("content-type") || "").includes("text/html"), html: await r.text() }))
     .catch(() => ({ ok: false }));
   prefetchCache.set(url, pr);
-  if (prefetchCache.size > 40) prefetchCache.delete(prefetchCache.keys().next().value); // 上限, 防内存膨胀
+  if (prefetchCache.size > 40) prefetchCache.delete(prefetchCache.keys().next().value); // bounded
 }
 function prefetchable(a) {
   return a && a.origin === location.origin && !a.target && !a.hasAttribute("download") &&
-    a.getAttribute("href") && !a.href.includes("#") && a.dataset.noPrefetch === undefined && a.href !== location.href;
+    a.getAttribute("href") && a.dataset.noPrefetch === undefined && stripHash(a.href) !== stripHash(location.href);
 }
 let hoverTimer;
 document.addEventListener("pointerover", (e) => {
@@ -107,62 +140,154 @@ document.addEventListener("pointerover", (e) => {
   if (!prefetchable(a)) return;
   clearTimeout(hoverTimer);
   loadMorph();
-  hoverTimer = setTimeout(() => prefetch(a.dataset.raw ? a.href : localize(a.href)), 60);   // 悬停 60ms 才预取
+  hoverTimer = setTimeout(() => prefetch(stripHash(a.dataset.raw ? a.href : localize(a.href))), 60);   // 60 ms: a hover, not a pass-over
 });
 document.addEventListener("pointerout", () => clearTimeout(hoverTimer));
 document.addEventListener("touchstart", (e) => {
   const a = e.target.closest && e.target.closest("a[href]");
-  if (prefetchable(a)) prefetch(a.href);
+  if (prefetchable(a)) prefetch(stripHash(a.href));
 }, { passive: true });
 
+/* Snapshot cache + scroll restoration: back/forward morph from the last HTML seen (instant, no network), restore the
+   scroll position saved on the history entry, then revalidate against the server in the background */
+const snapshots = new Map();
+function remember(url, html) {
+  snapshots.delete(url);
+  snapshots.set(url, html);
+  if (snapshots.size > 10) snapshots.delete(snapshots.keys().next().value);
+}
+function saveScroll() {
+  try { history.replaceState(Object.assign({}, history.state || {}, { gotsx: true, scroll: [window.scrollX, window.scrollY] }), ""); } catch { /* ignore */ }
+}
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+const jump = (x, y) => window.scrollTo({ left: x, top: y, behavior: "instant" });   // restoration is never animated, whatever scroll-behavior the page sets
+remember(stripHash(location.href), "<!DOCTYPE html>" + document.documentElement.outerHTML);
+
+const applyFills = () => document.querySelectorAll("template[data-gotsx-fill]").forEach((t) => window.__gotsxFill && window.__gotsxFill(t.getAttribute("data-gotsx-fill")));
+function applyChunk(chunk) {   // a streamed <template data-gotsx-fill> (the server's inline script is not needed: we call the fill ourselves)
+  const d = new DOMParser().parseFromString(chunk, "text/html");
+  d.querySelectorAll("template[data-gotsx-fill]").forEach((t) => {
+    document.body.appendChild(document.adoptNode(t));
+    if (window.__gotsxFill) window.__gotsxFill(t.getAttribute("data-gotsx-fill"));
+  });
+}
+
 let navSeq = 0, navAbort = null;
-async function navigate(url, push = true) {
+async function navigate(url, push = true, restore = null) {
   const seq = ++navSeq;
   if (navAbort) navAbort.abort();
   navAbort = new AbortController();
-  barStart();
+  const key = stripHash(url);
+  const hash = url.includes("#") ? url.slice(url.indexOf("#") + 1) : "";
   const morphReady = loadMorph();
-  let html;
-  const cached = prefetchCache.get(url);
+  let Idiomorph = null, settled = false;
+  const fail = () => { barDone(); location.href = url; };
+  const swapDoc = (html) => {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const swap = () => {
+      mergeHead(doc);
+      Idiomorph.morph(document.body, doc.body, { morphStyle: "outerHTML", callbacks: { beforeNodeMorphed: keepIslands } });
+      reconcile();
+    };
+    if (document.startViewTransition && !settled) {
+      const vt = document.startViewTransition(swap);
+      vt.ready.catch(() => {});
+      return vt.finished.catch(() => {});
+    }
+    swap();
+    return Promise.resolve();
+  };
+  const afterSwap = () => {
+    if (settled) return;
+    settled = true;
+    if (restore) jump(restore[0], restore[1]);
+    else if (hash && document.getElementById(hash)) document.getElementById(hash).scrollIntoView();
+    else if (push) jump(0, 0);
+    if (push) focusMain();
+    announce(document.title);
+    document.dispatchEvent(new CustomEvent("gotsx:navigated", { detail: { url } }));
+  };
+  // 1. back/forward with a snapshot: morph it right away, then revalidate silently
+  const snap = !push && snapshots.get(key);
+  if (snap) {
+    try { Idiomorph = await morphReady; } catch { fail(); return; }
+    if (seq !== navSeq) return;
+    await swapDoc(snap);
+    applyFills();
+    afterSwap();
+  } else {
+    barStart();
+    if (push) { saveScroll(); history.pushState({ gotsx: true }, "", url); }
+  }
+  // 2. fetch: the prefetch cache, or a streamed response whose shell is morphed as soon as </html> is in
+  let html = "";
   try {
-    if (cached) {                       // 命中预取: 秒开
+    const cached = prefetchCache.get(key);
+    if (cached) {
       const res = await cached;
-      prefetchCache.delete(url);
-      if (!res.ok) { barDone(); location.href = url; return; }
+      prefetchCache.delete(key);
+      if (seq !== navSeq) return;
+      if (!res.ok) { fail(); return; }
       html = res.html;
     } else {
       const res = await fetch(url, { headers: { "X-Gotsx-Nav": "1" }, signal: navAbort.signal });
-      if (!res.ok || !(res.headers.get("content-type") || "").includes("text/html")) { barDone(); location.href = url; return; }
-      html = await res.text();
+      if (seq !== navSeq) return;
+      if (!res.ok || !(res.headers.get("content-type") || "").includes("text/html")) { if (!snap) fail(); return; }
+      if (!res.body || !res.body.getReader) html = await res.text();
+      else {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "", shell = null;
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (seq !== navSeq) { reader.cancel().catch(() => {}); return; }
+          if (value) buf += dec.decode(value, { stream: true });
+          if (shell === null) {
+            const i = buf.indexOf("</html>");
+            if (i >= 0 || done) {
+              const end = i >= 0 ? i + 7 : buf.length;
+              shell = buf.slice(0, end); buf = buf.slice(end); html = shell;
+              if (!Idiomorph) { try { Idiomorph = await morphReady; } catch { fail(); return; } }
+              if (seq !== navSeq) return;
+              barDone();
+              await swapDoc(shell);
+              if (seq !== navSeq) return;
+              applyFills();
+              afterSwap();
+              if (restore && settled) jump(restore[0], restore[1]);   // revalidation after a snapshot restore: keep the position
+            }
+          }
+          if (shell !== null) {
+            let j;
+            while ((j = buf.indexOf("</template>")) >= 0) {   // each complete Suspense fill is applied as it lands
+              const chunk = buf.slice(0, j + 11); buf = buf.slice(j + 11); html += chunk;
+              applyChunk(chunk);
+            }
+          }
+          if (done) break;
+        }
+        remember(key, html);
+        return;
+      }
     }
-  } catch (e) { if (e.name !== "AbortError") { barDone(); location.href = url; } return; }
+  } catch (e) { if (e.name !== "AbortError" && !snap) fail(); return; }
   if (seq !== navSeq) return;
-  let Idiomorph;
-  try { Idiomorph = await morphReady; } catch { barDone(); location.href = url; return; }
+  if (!Idiomorph) { try { Idiomorph = await morphReady; } catch { fail(); return; } }
   if (seq !== navSeq) return;
   barDone();
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  if (push) history.pushState({ gotsx: true }, "", url);
-  const swap = () => {
-    mergeHead(doc);
-    Idiomorph.morph(document.body, doc.body, { morphStyle: "outerHTML", callbacks: { beforeNodeMorphed: keepIslands } });
-    reconcile();
-  };
-  const applyFills = () => document.querySelectorAll("template[data-gotsx-fill]").forEach((t) => window.__gotsxFill && window.__gotsxFill(t.getAttribute("data-gotsx-fill")));
-  if (document.startViewTransition) {
-    const vt = document.startViewTransition(swap);
-    vt.ready.catch(() => {});                       // 过渡被跳过(如紧接着又一次跳转)不算错
-    try { await vt.finished; } catch { /* 同上 */ }
-  } else swap();
-  applyFills();                                  // 流式 Suspense 的填充随 HTML 一起到达, 跳转后手动应用
-  if (push) window.scrollTo(0, 0);
-  document.dispatchEvent(new CustomEvent("gotsx:navigated", { detail: { url } }));
+  await swapDoc(html);
+  if (seq !== navSeq) return;
+  applyFills();
+  afterSwap();
+  if (restore && settled) jump(restore[0], restore[1]);
+  remember(key, html);
 }
 
 document.addEventListener("click", (e) => {
   const a = e.target.closest && e.target.closest("a[href]");
   if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   if (a.origin !== location.origin || a.target || a.hasAttribute("download")) return;
+  if (a.hash && stripHash(a.href) === stripHash(location.href)) return;   // same-page anchor: native scroll + hashchange
   e.preventDefault();
   navigate(a.dataset.raw ? a.href : localize(a.href));
 });
@@ -174,7 +299,11 @@ document.addEventListener("submit", (e) => {
   u.search = new URLSearchParams(new FormData(f)).toString();
   navigate(u.href);
 });
-addEventListener("popstate", () => navigate(location.href, false));
+addEventListener("popstate", (e) => {
+  const st = e.state || history.state;
+  if (!st || !st.gotsx) { if (location.hash) return; }   // hash-only history entries: the browser handles them
+  navigate(location.href, false, (st && st.scroll) || null);
+});
 
 /* 客户端遥测(仅当服务端开启 OnClientEvent 时): JS 错误 / 未处理 rejection / 页面浏览 */
 const logURL = () => window.__GOTSX && window.__GOTSX.log;

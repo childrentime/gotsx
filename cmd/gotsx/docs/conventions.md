@@ -130,6 +130,14 @@ The next page render receives `props.flash` (consumed once) and `props.session`.
 don't use it stay cookie-free and cacheable. Read it in the page shell, not inside a `<Suspense>` boundary
 (after the shell is flushed a cookie can no longer be set).
 
+## SPA navigation (what the loader does for you)
+
+Every same-origin link and GET form navigates without a reload: the loader fetches the HTML, morphs `<body>`
+(islands keep their state), merges the page's `<head>` metadata, restores scroll on back/forward from a snapshot,
+moves focus to `[data-gotsx-focus]` (else `<main>`, else `<h1>`) and announces the title to screen readers.
+Opt a link out with `data-no-prefetch` (no hover prefetch) or `target="_self"`-style attributes (`target`,
+`download` → full navigation). Same-page `#anchors` are native. Streaming `<Suspense>` works during navigation too.
+
 ## Styling
 
 Scaffolds ship the gotsx design system (`public/app.css`, or `app/gotsx.css` with `--tailwind`): tokens

@@ -138,7 +138,7 @@ The full, searchable syntax table lives in the `site` docs at `/docs/language`.
 - **Page meta**: `export function meta(props: PageProps): Meta` next to the page; layouts render `props.meta` (`title`, `description`, `canonical`, `image`, `noIndex`) into `<head>`.
 - **File routing**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; more specific routes win. **Nested layouts**: `pages/**/_layout.server.tsx` (`LayoutProps` = `PageProps` + `meta` + `children`) wrap the pages below them; `_404` / `_error` become `gen.NotFound` / `gen.ErrorPage`. `redirect(url, status?)` and `notFound()` abort a render.
 - **Streaming SSR**: `<Suspense fallback={…}>` ships the fallback with the shell and renders its children **in their own goroutine** after the shell is flushed; several boundaries resolve concurrently and stream in as they finish (out of order, nested, with error isolation). No async in the language: the boundary is where the slow host call goes.
-- **Islands + SPA navigation**: pages ship zero JS; islands load on demand; navigation fetches HTML and morphs it (idiomorph), islands survive by DOM identity so state isn't lost; a top progress bar and hover prefetch make it feel instant.
+- **Islands + SPA navigation**: pages ship zero JS; islands load on demand; navigation fetches HTML and morphs it (idiomorph), islands survive by DOM identity so state isn't lost. The shell is morphed as soon as it streams in while `Suspense` fills keep arriving; back/forward restore from a snapshot cache with the scroll position; per-page `<head>` metadata is merged; same-page anchors stay native; focus moves to `<main>` (or `[data-gotsx-focus]`) and a route announcer tells screen readers the new title; a top progress bar and hover prefetch make it feel instant.
 - **Keyed lists**: `xs.map((x) => <li key={x.id}>…</li>)` reuses, moves and disposes DOM per key — inputs, focus and per-row effects survive reorders; lists without `key` rebuild as before.
 - **Resumable hydration**: the server only marks the reactive text/conditions/lists; the client claims nodes in the same order the same compiler produced, reusing existing DOM without diffing.
 - **Cookies / middleware**: request cookies flow into `PageProps.Cookies`; the `Options.Before` hook can set cookies or do auth; `Options.Middleware` is a standard middleware chain.
@@ -179,13 +179,13 @@ costs ~15 µs and ~140 allocations in-process. On the runner (AMD EPYC, 4 vCPU, 
 <!-- BENCH:SUMMARY -->
 | | gotsx | templ | html/template | Gin | Hono (Bun) | Astro 7 | Next.js 16 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| req/s | **19,620** | 20,789 | 5,257 | 4,981 | 3,918 | 1,675 | 294 |
-| p50 | 2.0 ms | 2.8 ms | 8.0 ms | 8.6 ms | 15.9 ms | 37.3 ms | 214.1 ms |
-| peak RSS | 21 MB | 17 MB | 20 MB | 27 MB | 76 MB | 215 MB | 387 MB |
-| cold start | 20 ms | 11 ms | 11 ms | 11 ms | 27 ms | 170 ms | 516 ms |
-| req/s on 1 core | **13,234** | 9,183 | 2,360 | 2,313 | 3,970 | 1,676 | 313 |
+| req/s | **12,712** | 13,013 | 3,656 | 3,372 | 2,915 | 1,441 | 242 |
+| p50 | 2.8 ms | 4.1 ms | 9.8 ms | 11.1 ms | 21.2 ms | 43.2 ms | 262.2 ms |
+| peak RSS | 20 MB | 17 MB | 20 MB | 26 MB | 78 MB | 228 MB | 386 MB |
+| cold start | 22 ms | 11 ms | 11 ms | 12 ms | 40 ms | 206 ms | 718 ms |
+| req/s on 1 core | **6,939** | 4,899 | 1,635 | 1,583 | 2,938 | 1,454 | 262 |
 
-<sub>runner: INTEL(R) XEON(R) PLATINUM 8573C (4 vCPU), 64 connections, 2026-09-02</sub>
+<sub>runner: AMD EPYC 7763 64-Core Processor (4 vCPU), 64 connections, 2026-09-03</sub>
 <!-- /BENCH:SUMMARY -->
 
 See [`bench/README.md`](bench/README.md) for the full tables (build time, artifact size, HTML/JS bytes) and an honest

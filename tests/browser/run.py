@@ -53,7 +53,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix="gotsx-browser-")
     bins = {}
     for app in ("example", "shop", "admin"):
-        if want({"example": "example_action", "shop": "shop", "admin": "admin"}[app]):
+        if app != "example" and want(app) or app == "example" and (want("example_action") or want("spa")):
             sh([CLI, "build", app])
             bins[app] = os.path.join(tmp, app + "-bin")
             sh(["go", "build", "-o", bins[app], "./" + app])
@@ -67,8 +67,10 @@ def main():
     ok = True
     procs = []
     try:
-        if want("example_action"):
-            procs.append(serve(bins["example"], os.path.join(ROOT, "example"), 3491)); ok &= run_suite("example_action", "3491")
+        if want("example_action") or want("spa"):
+            procs.append(serve(bins["example"], os.path.join(ROOT, "example"), 3491))
+            if want("example_action"): ok &= run_suite("example_action", "3491")
+            if want("spa"): ok &= run_suite("spa", "3491")
         if want("shop"):
             procs.append(serve(bins["shop"], os.path.join(ROOT, "shop"), 3492)); ok &= run_suite("shop", "3492")
         if want("admin"):
