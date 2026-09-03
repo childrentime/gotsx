@@ -287,7 +287,7 @@ type Stat struct {
 	Value string `json:"value"`
 	Delta string `json:"delta"`
 	Up    bool   `json:"up"`
-	Icon  string `json:"icon"`
+	Icon  string `json:"icon"` // an SVG icon name from app/ui/Icon.tsx (no emoji as UI chrome)
 }
 
 func (StatsModule) Cards() []Stat {
@@ -296,10 +296,10 @@ func (StatsModule) Cards() []Stat {
 	total := len(Users.list)
 	Users.mu.Unlock()
 	return []Stat{
-		{"Total users", fmt.Sprintf("%d", total), "+12%", true, "👥"},
-		{"Active users", fmt.Sprintf("%d", active), "+8%", true, "✅"},
-		{"Admins", fmt.Sprintf("%d", admins), "0%", true, "🛡️"},
-		{"New this month", "23", "+34%", true, "📈"},
+		{"Total users", fmt.Sprintf("%d", total), "+12%", true, "users"},
+		{"Active users", fmt.Sprintf("%d", active), "+8%", true, "check"},
+		{"Admins", fmt.Sprintf("%d", admins), "0%", true, "shield"},
+		{"New this month", "23", "+34%", true, "up"},
 	}
 }
 
@@ -312,11 +312,11 @@ type Activity struct {
 
 func (StatsModule) Recent() []Activity {
 	return []Activity{
-		{"Alice Chen", "created user “Liam Lee”", "2 minutes ago", "➕"},
-		{"Fiona Wang", "changed permissions for “Sales”", "18 minutes ago", "✏️"},
-		{"System", "auto-disabled 3 dormant accounts", "1 hour ago", "🔒"},
-		{"Mia Zhao", "exported the user report", "3 hours ago", "📤"},
-		{"Alice Chen", "signed in to the console", "5 hours ago", "🔑"},
+		{"Alice Chen", "created user “Liam Lee”", "2 minutes ago", "plus"},
+		{"Fiona Wang", "changed permissions for “Sales”", "18 minutes ago", "pencil"},
+		{"System", "auto-disabled 3 dormant accounts", "1 hour ago", "shield"},
+		{"Mia Zhao", "exported the user report", "3 hours ago", "activity"},
+		{"Alice Chen", "signed in to the console", "5 hours ago", "logout"},
 	}
 }
 
