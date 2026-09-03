@@ -9,10 +9,10 @@ export function meta(props: PageProps): Meta {
 }
 
 // pages/_404.server.tsx → gen.NotFound: any unknown path, wrapped by _layout like every page
-export default function NotFound({ cookies, locale }: PageProps) {
+export default function NotFound({ locale }: PageProps) {
   const lc = locale !== "" ? locale : "en";
   return (
-    <Layout sid={cookies.sid ?? ""} locale={lc} wide>
+    <Layout locale={lc} wide>
       <div class="card flex flex-col items-center py-24 text-center">
         <span class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground"><Icon name="search" className="h-5 w-5" /></span>
         <p class="mt-4 font-medium">{t(lc, "error.notFound")}</p>

@@ -7,6 +7,7 @@
 | `app/pages/**/*.server.tsx` | Go, per request | `host:*`, `./components/*.server`, islands (`*.client`), `gotsx` | `export default` a component taking `PageProps`; optional `export function meta(props?: PageProps): Meta` |
 | `app/components/*.server.tsx` | Go | same as pages | any props; may take `children: Node` |
 | `app/islands/*.client.tsx` | Go (first render) + browser (hydrated) | `gotsx`, other client modules, `import type` from `host:*`, **actions** from `host:*` | props must be JSON-serializable; no `children`; may use `useState`/`useEffect`, `async` handlers, `fetch`, DOM |
+| `app/stores/*.client.tsx` (convention) | Go (initial value / the request's seed) + browser | same as islands | `export const cart = createStore<T>(init)` plus the functions that call `cart.set`; imported by islands and, for `seed`, by pages |
 | `app/pages/**/_layout.server.tsx` | Go | same as pages | `LayoutProps` = `PageProps` + `meta` + `children`; nested directories may add their own; outer wraps inner |
 | `app/pages/_404.server.tsx` | Go | same | → `gen.NotFound` (PageProps) |
 | `app/pages/_error.server.tsx` | Go | same | → `gen.ErrorPage` (`ErrorProps` = PageProps + `message`) |
@@ -101,6 +102,59 @@ Passing an action as a value (`onClick={remove}`) is allowed; it becomes a funct
 An action is a network request, so calling it in a component body (during render) is a compile error; call it
 from a handler or an effect — `onClick={() => remove(id)}` fires and forgets, `await` inside an `async` handler
 gives you the result.
+
+## Shared state: stores
+
+State that several islands show (a cart badge in the header, the cart page, the checkout total) lives in a **store**,
+a module-level const of a client module. Fields are signals; the page seeds the store once per request:
+
+```tsx
+// app/stores/cart.client.tsx
+import { createStore } from "gotsx";
+import type { CartView } from "host:cart";
+export const cart = createStore<CartView>({ items: [], empty: true });   // fields not listed are zero values
+```
+
+```tsx
+// app/pages/_layout.server.tsx (or any page): before the JSX, in the default component's body
+import { seed } from "gotsx";
+import { view } from "host:cart";
+import { cart } from "../stores/cart";
+export default function Root({ cookies, children }: LayoutProps) {
+  seed(cart, view(cookies.sid ?? ""));   // this request's islands render with it; the browser's store starts from it
+  return <html>…{children}…</html>;
+}
+```
+
+```tsx
+// app/islands/CartBadge.client.tsx
+import { cart } from "../stores/cart";
+export default function CartBadge() {
+  const { count } = cart;                          // a signal: only this text node updates
+  return <a href="/cart">{count > 0 && <span>{count}</span>}</a>;
+}
+// app/islands/AddToCart.client.tsx: in a handler
+cart.set(await add(id, variant, qty));             // the action's CartView replaces the state; every island follows
+cart.set((s) => { s.items.push(item); s.count += 1; });   // or mutate a draft: only the fields that changed notify
+```
+
+- `createStore<T>(init)`: module level, client modules only. `T` is an object type (an interface, a host type or the
+  literal's shape) whose fields are JSON-serializable. Reads (`cart.x`, `const { x } = cart`) are allowed in client
+  code only and are read-only: `cart.x = v` / `cart.xs.push(v)` are compile errors — mutate inside `set`.
+- `cart.set(update)`: `update` is `(draft: T) => void` (copy-on-write, Immer semantics: untouched fields and rows keep
+  their identity, so keyed lists reuse rows and quiet signals stay quiet) or a whole `T`. Call it from handlers,
+  effects and plain functions; calling it in a component body is a compile error (render is synchronous).
+- `seed(store, value)`: only in the body of a page or layout's default component, before the JSX. Page and layout bodies
+  run before any HTML is written, so every island of the request (the layout chrome included) renders with the value;
+  it is serialized into `<head>` (`<script type="application/json" data-gotsx-stores>`) and the store hydrates from it.
+  After an SPA navigation the new page's seeds replace the stores they name; stores a page does not seed keep their state.
+  Without a seed, the server renders the initial value (as `useState` does).
+- The server never mutates a store; `set` exists only in the browser. Go sees `gotsx.NewStore(...)` vars in `gen/`.
+- A helper function of a client module that reads a store runs only in the browser (like a function touching the DOM):
+  calling it during a render fails at `go build` with the `.tsx` line. Read the store inside the component instead.
+- Named components exported from a client module take the render context and are helpers for islands; only the default
+  export is an island usable from pages.
+- Use `emit` / `on` for commands (open a modal, show a toast), a store for state.
 
 ## Classic form posts, sessions, flash, CSRF
 

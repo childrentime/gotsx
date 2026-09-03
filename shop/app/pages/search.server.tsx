@@ -17,7 +17,7 @@ export default function SearchPage({ query, cookies, locale, path }: PageProps) 
   const page = listCards("", q, sort, Number(query.p ?? "1"));
   const title = tv(lc, "search.results", { q });
   return (
-    <Layout sid={sid} locale={lc} q={q} wide path={path}>
+    <Layout locale={lc} q={q} wide path={path}>
       <Listing title={title} base={`/search?q=${encodeURIComponent(q)}&`} sort={sort} page={page} wished={wishList(sid)} locale={lc} />
     </Layout>
   );

@@ -105,3 +105,72 @@ func fakeClientFS() fstest.MapFS {
 		"idiomorph.esm.js": {Data: []byte("// idiomorph")},
 	}
 }
+
+// compileMany: several modules at once (a store module, the island reading it, the page seeding it). Returns the
+// generated Go / JS keyed by file name; JS is empty for server modules.
+func compileMany(t *testing.T, files map[string]string) (goSrc, jsSrc map[string]string) {
+	t.Helper()
+	c, err := NewChecker(testHostJSON)
+	if err != nil {
+		t.Fatalf("NewChecker: %v", err)
+	}
+	var mods []*Module
+	for f, src := range files {
+		m, err := ParseModule(src, f)
+		if err != nil {
+			t.Fatalf("parse %s: %v", f, err)
+		}
+		c.AddModule(m)
+		mods = append(mods, m)
+	}
+	if err := c.CheckAll(); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	goSrc, jsSrc = map[string]string{}, map[string]string{}
+	for _, m := range mods {
+		gs, err := GenGo(c, m, "gen", "github.com/childrentime/gotsx/runtime", "github.com/childrentime/gotsx/example/host")
+		if err != nil {
+			t.Fatalf("GenGo %s: %v", m.File, err)
+		}
+		goSrc[m.File] = stripLineDirectives(gs)
+		if m.Kind != "server" {
+			js, err := GenJS(c, m)
+			if err != nil {
+				t.Fatalf("GenJS %s: %v", m.File, err)
+			}
+			jsSrc[m.File] = js
+		}
+	}
+	return goSrc, jsSrc
+}
+
+// compileManyErr: like compileMany but expects a failure somewhere (check or either backend); returns the message
+func compileManyErr(files map[string]string) (string, bool) {
+	c, err := NewChecker(testHostJSON)
+	if err != nil {
+		return err.Error(), true
+	}
+	var mods []*Module
+	for f, src := range files {
+		m, err := ParseModule(src, f)
+		if err != nil {
+			return err.Error(), true
+		}
+		c.AddModule(m)
+		mods = append(mods, m)
+	}
+	if err := c.CheckAll(); err != nil {
+		return err.Error(), true
+	}
+	for _, m := range mods {
+		if _, err := GenGo(c, m, "gen", "github.com/childrentime/gotsx/runtime", "github.com/childrentime/gotsx/example/host"); err != nil {
+			return err.Error(), true
+		}
+		if m.Kind != "server" {
+			if _, err := GenJS(c, m); err != nil {
+				return err.Error(), true
+			}
+		}
+	}
+	return "", false
+}

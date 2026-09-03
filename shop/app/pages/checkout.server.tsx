@@ -14,7 +14,7 @@ export default function Checkout({ cookies, locale, path }: PageProps) {
   const sid = cookies.sid ?? "";
   const cv = view(sid);
   return (
-    <Layout sid={sid} locale={lc} wide path={path}>
+    <Layout locale={lc} wide path={path}>
       <nav class="mb-5 flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="breadcrumb">
         <a href="/cart" class="transition-colors hover:text-foreground">{t(lc, "cart.title")}</a><Icon name="chevron-right" className="h-3 w-3" /><span class="text-foreground">{t(lc, "checkout.title")}</span>
       </nav>
@@ -29,7 +29,7 @@ export default function Checkout({ cookies, locale, path }: PageProps) {
           <div class="space-y-4">
             <div class="card p-6">
               <h2 class="mb-5 flex items-center gap-2 text-base font-semibold"><Icon name="map-pin" />{t(lc, "checkout.shipping")}</h2>
-              <CheckoutForm totalFmt={cv.totalFmt} locale={lc} />
+              <CheckoutForm locale={lc} />
             </div>
           </div>
           <div class="card h-fit p-6 lg:sticky lg:top-32">

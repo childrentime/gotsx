@@ -390,6 +390,10 @@ func (g *jsGen) expr(e Expr) string {
 		if x.Kind == "hook:useMemo" {
 			return "G.memo(" + g.expr(x.Args[0]) + ")"
 		}
+		if x.Kind == "hook:createStore" { // export const cart = createStore(init) → G.store(key, init) — every field present (missing = zero value)
+			st := x.T().(*StoreT)
+			return "G.store(" + jsQuote(st.Sym.Go) + ", " + g.storeInit(x.Args[0], st.State) + ")"
+		}
 		if x.Kind == "action" { // await toggle(id) → G.act("todos", "toggle", [id])
 			var args []string
 			for _, a := range x.Args {
@@ -480,6 +484,9 @@ func (g *jsGen) expr(e Expr) string {
 func (g *jsGen) lval(e Expr) string {
 	switch x := e.(type) {
 	case *Member:
+		if _, ok := x.X.T().(*StoreT); ok && x.Name != "set" { // cart.count: a signal read
+			return g.expr(x.X) + "." + x.Name + "()"
+		}
 		if x.Optional {
 			return g.expr(x.X) + "?." + x.Name
 		}
@@ -503,6 +510,56 @@ func zeroJS(t Type) string {
 		return "false"
 	}
 	return ""
+}
+
+// zeroValue: the JS zero value of a dialect type (what the Go side has for an absent field)
+func (g *jsGen) zeroValue(t Type) string {
+	if z := zeroJS(t); z != "" {
+		return z
+	}
+	switch x := t.(type) {
+	case *OptT:
+		if _, isObj := x.Elem.(*ObjT); isObj {
+			return "undefined"
+		}
+		return g.zeroValue(x.Elem)
+	case *ArrT:
+		return "[]"
+	case *MapT:
+		return "{}"
+	case *ObjT:
+		var ps []string
+		for _, f := range x.Fields {
+			ps = append(ps, jsKey(f.Name)+": "+g.zeroValue(f.Type))
+		}
+		return "{ " + strings.Join(ps, ", ") + " }"
+	}
+	return "undefined"
+}
+
+// storeInit: the initial state of a store with every field of the state type present, so the store has a signal per
+// field (a literal may omit fields: they are zero values, as on the Go side)
+func (g *jsGen) storeInit(init Expr, state *ObjT) string {
+	lit, ok := init.(*ObjectLit)
+	if !ok {
+		return "Object.assign(" + g.zeroValue(state) + ", " + g.expr(init) + ")"
+	}
+	given := map[string]Expr{}
+	for _, p := range lit.Props {
+		if p.Spread != nil {
+			return "Object.assign(" + g.zeroValue(state) + ", " + g.expr(init) + ")"
+		}
+		given[p.Key] = p.Val
+	}
+	var ps []string
+	for _, f := range state.Fields {
+		if v, ok := given[f.Name]; ok {
+			ps = append(ps, jsKey(f.Name)+": "+g.expr(v))
+		} else {
+			ps = append(ps, jsKey(f.Name)+": "+g.zeroValue(f.Type))
+		}
+	}
+	return "{ " + strings.Join(ps, ", ") + " }"
 }
 
 // mapRead: 读 Record 的键 —— 与 Go 的 map 一致, 缺席的键给值类型的零值(m.k ?? ""), 用 Object.hasOwn 判断存在

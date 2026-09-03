@@ -13,7 +13,7 @@ export default function OrderDetail({ params, cookies, locale, path, flash }: Pa
   const sid = cookies.sid ?? "";
   const o = get(sid, params.id);
   return (
-    <Layout sid={sid} locale={lc} active="orders" wide path={path}>
+    <Layout locale={lc} active="orders" wide path={path}>
       {flash.map((f) => (
         <div class={"alert alert-" + f.kind + " mb-5"} role="status">{f.text}</div>
       ))}

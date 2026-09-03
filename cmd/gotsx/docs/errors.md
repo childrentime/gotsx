@@ -21,6 +21,15 @@ Compile errors are `file:line:col: message`. `gotsx check --json` returns them a
 | `array element: A is not assignable to B (arrays are homogeneous …)` | a mixed literal like `["label", 78]` (tuples are not in the subset) | use an object per row: `{ label: "…", pct: 78 }` |
 | `await can only be used in client code` / `… only … server components (*.server.tsx)` | server code uses browser-only constructs, or an island uses `redirect()` / `notFound()` / `Suspense` | move the code to the other side: islands for `await`/DOM, server components for page control flow |
 | `actions return a Promise` … `not during render` | an action called in a component body (render is synchronous) | call it from a handler or effect: `onClick={() => toggle(id)}` (fire-and-forget) or `onClick={async () => { const t = await toggle(id); … }}` |
+| `createStore can only be used in a client module` / `createStore must be a module-level const` | a store declared in a page/server component, or inside a function | `export const cart = createStore<T>(init)` at the top of a `.client.tsx` file (`app/stores/`) |
+| `the store state must be an object type` / `store field "x" … cannot be serialized` / `cannot be named "set"` | the state is not a JSON object (a function or Node field, a non-object) | keep the state to primitives, arrays, records and object types |
+| `store x can only be read in client code` | a page or server component reads `store.field` | the page provides data with `seed(store, value)`; islands read it |
+| `store state is read-only outside x.set` / `cannot assign to store field` / `cannot mutate store …` | `cart.count = 1`, `count++`, `cart.items.push(x)` | mutate inside `cart.set((s) => { s.count = 1; s.items.push(x); })` |
+| `x.set runs in the browser after the render` | `store.set` called in a component body or at module level | call it from an event handler, an effect or a plain function |
+| `seed() can only be called in a page or layout` / `seed(store, value) must be called in the body of the page's default component` | `seed` in an island, a server component, `meta()`, a callback or JSX | call it as a statement in the page/layout component body, before the JSX |
+| `is a helper component of a client module, not an island` | a page renders a named export of a `.client.tsx` file | use it inside islands, or move it to a shared `*.tsx` module |
+| `only const, function, interface and type declarations are allowed at module level` | a statement at the top of a file (`cart.set(...)`, a call) | move it into a function or an effect |
+| `field x: A is not assignable to B` | an object literal does not match the declared / expected type | fix the value; convert with `String(n)` / `Number(s)` |
 | `actions may only take builtin types and host types` (from `gotsx build`) | an action parameter has a type from another package (`time.Time`, …) | take a string / number and convert in Go |
 | `unsupported` / `not supported` (syntax) | construct outside the subset | see the "no" rows in `language.md` for rewrites |
 | `Go backend: object spread is not supported` | `{...a}` in server code | build the object explicitly |
@@ -38,7 +47,9 @@ Compile errors are `file:line:col: message`. `gotsx check --json` returns them a
 | action returns 401 / 403 | `gotsx.Unauthorized` / `gotsx.Forbidden` from the method (session check) | sign in / hide the control for that role |
 | `delete only works on a Record key: delete m[key] / delete m.key` at a call like `delete(id)` | a Go method named `Delete` becomes the reserved word `delete` | rename the method (`Remove`) |
 | form post returns 403 `invalid CSRF token` | no `_csrf` hidden input, or the session cookie was not sent | add `<input type="hidden" name="_csrf" value={csrf} />`; same site only |
-| page shows an old value after an action | islands hold their own state; the server rendered the previous one | update the signal from the action's return value, or navigate/reload |
+| page shows an old value after an action | islands hold their own state; the server rendered the previous one | update the signal from the action's return value (`cart.set(await add(...))` for a store), or navigate/reload |
+| an island shows the store's initial value on first paint, then jumps | no `seed(store, value)` for that page; the browser computed the value later | seed it in the page or layout body (it runs before any HTML is written) |
+| `undefined: someHelper` from `go build` at a `.tsx` line | a client-module helper that reads a store (or the DOM) is called during a server render | read the store in the component; pass values into helpers |
 | `[browser] error: …` in the dev terminal | a JS error in an island (forwarded by the dev server) | fix the island; stack is in the browser console |
 | 500 with `_error` page | a host method returned an error / panicked | wrap not-found errors with `gotsx.ErrNotFound` for 404s; check the log line with the request id |
 | styles missing after `gotsx new --tailwind` | Tailwind binary not downloaded | `gotsx tailwind` once |

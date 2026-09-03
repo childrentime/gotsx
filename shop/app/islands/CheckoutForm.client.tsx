@@ -1,8 +1,10 @@
-import { useState, emit } from "gotsx";
+import { useState } from "gotsx";
 import { place } from "host:orders";            // typed action: OrdersModule.Place (validation → 422 with fields)
+import { cart } from "../stores/cart";
 import Icon from "../ui/Icon";
 
-export default function CheckoutForm({ totalFmt, locale = "" }: { totalFmt: string; locale?: string }) {
+export default function CheckoutForm({ locale = "" }: { locale?: string }) {
+  const { totalFmt } = cart;                     // the shared cart store (seeded by the layout): the button shows the live total
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -12,8 +14,7 @@ export default function CheckoutForm({ totalFmt, locale = "" }: { totalFmt: stri
     setBusy(true);
     try {
       const o = await place(name, phone, address);
-      emit("cart:changed", { count: 0 });
-      window.__gotsxNavigate("/orders/" + o.id);
+      window.__gotsxNavigate("/orders/" + o.id);   // the order page seeds the (now empty) cart: the badge clears with the navigation
     } catch (e) {
       setErrs(e.status === 422 ? e.fields : { _: e.message });   // field errors, or the empty-cart / server message
       setBusy(false);

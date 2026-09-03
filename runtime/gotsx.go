@@ -28,6 +28,17 @@ type Ctx struct {
 	pending []*Pending // 本次渲染登记的 Suspense 边界(流式: 外壳先发, 这些随后并发填充)
 	seq     *uint32    // 边界 id 计数器, 嵌套渲染共享
 	inject  string     // 请求层要塞进 </head> 前的引导脚本; 写完后清空(没有 head 就塞在 </body> 前, 再没有就追加到末尾)
+	scope   *reqScope  // per-request store seeds (seed(store, value) in a page); nil outside a request
+}
+
+// writeInject: the bootstrap script plus the store seeds, once, at </head> (or </body>, or the end of the document)
+func (c *Ctx) writeInject() {
+	if c.inject == "" {
+		return
+	}
+	c.b.WriteString(c.inject)
+	c.inject = ""
+	c.b.WriteString(c.scope.script())
 }
 
 func (c *Ctx) Raw(s string) { c.b.WriteString(s) }
@@ -49,9 +60,9 @@ type Pending struct {
 	Fn func() Node
 }
 
-// RenderPending: 渲染并返回登记的 Suspense 边界(请求层用它做流式)。seq 在嵌套填充之间共享。
-func RenderPending(n Node, seq *uint32) (string, []*Pending) {
-	c := &Ctx{seq: seq}
+// RenderPending: 渲染并返回登记的 Suspense 边界(请求层用它做流式)。seq 在嵌套填充之间共享; scope 是本次请求的 store 种子。
+func RenderPending(n Node, seq *uint32, scope *reqScope) (string, []*Pending) {
+	c := &Ctx{seq: seq, scope: scope}
 	if n != nil {
 		n(c)
 	}
@@ -59,17 +70,24 @@ func RenderPending(n Node, seq *uint32) (string, []*Pending) {
 }
 
 // RenderDoc: 渲染整个文档 —— 一次性写入 doctype, 在 </head>(或 </body>)前塞入 inject, 不做事后的字符串替换/拼接。
-func RenderDoc(n Node, seq *uint32, inject string) (string, []*Pending) {
-	c := &Ctx{seq: seq, inject: inject}
+func RenderDoc(n Node, seq *uint32, inject string, scope *reqScope) (string, []*Pending) {
+	c := &Ctx{seq: seq, inject: inject, scope: scope}
 	c.b.Grow(16 * 1024)
 	c.b.WriteString("<!DOCTYPE html>")
 	if n != nil {
 		n(c)
 	}
-	if c.inject != "" { // 既没有 head 也没有 body
-		c.b.WriteString(c.inject)
-	}
+	c.writeInject() // 既没有 head 也没有 body
 	return c.b.String(), c.pending
+}
+
+// RenderIn: Render with a request scope (404 / error pages: the seeds are appended to the bootstrap by the caller)
+func RenderIn(scope *reqScope, n Node) string {
+	c := &Ctx{scope: scope}
+	if n != nil {
+		n(c)
+	}
+	return c.b.String()
 }
 
 func (c *Ctx) nextID() string {
@@ -137,9 +155,8 @@ func El(tag string, attrs []Attr, kids ...Node) Node {
 				k(c)
 			}
 		}
-		if c.inject != "" && (tag == "head" || tag == "body") {
-			c.b.WriteString(c.inject)
-			c.inject = ""
+		if tag == "head" || tag == "body" {
+			c.writeInject()
 		}
 		c.b.WriteString("</")
 		c.b.WriteString(tag)
@@ -698,6 +715,98 @@ type ThrowError struct{ Val any }
 func (e *ThrowError) Error() string { return fmt.Sprint(e.Val) }
 func Throw(v any)                   { panic(&ThrowError{Val: v}) }
 
+// ---------- Stores: shared client state, seeded per request by the page ----------
+
+// Store is what `export const cart = createStore(init)` in a client module compiles to. The browser holds the
+// state as signals; the Go side only knows the initial value and the value a page seeded for the current request
+// (seed(store, value)), which is what the islands of that request render with and what the browser starts from.
+// store.set(...) never runs on the server, so a Store is never mutated here and is safe to share across goroutines.
+type Store[T any] struct {
+	Name string // the generated Go identifier: unique per app, also the key in the seed JSON the browser reads
+	Init T
+}
+
+func NewStore[T any](name string, init T) *Store[T] { return &Store[T]{Name: name, Init: init} }
+
+// Get: the value this request renders with — the seed when the page set one, else the initial value.
+func (s *Store[T]) Get(c *Ctx) T {
+	if c != nil && c.scope != nil {
+		if v, ok := c.scope.get(s.Name); ok {
+			if t, ok := v.(T); ok {
+				return t
+			}
+		}
+	}
+	return s.Init
+}
+
+// Seeder: PageProps (and LayoutProps / ErrorProps through embedding) — what seed(store, value) compiles against.
+type Seeder interface{ reqScope() *reqScope }
+
+// Seed: `seed(store, value)` in the body of a page or layout component. It runs before any HTML is written (page
+// and layout bodies are evaluated first), so every island of the request renders with value, and the value is
+// serialized into <head> (a <script type="application/json" data-gotsx-stores> block) for the browser's store.
+// A later call for the same store wins. Outside a request (tests, Render) it is a no-op.
+func Seed[T any](p Seeder, s *Store[T], v T) {
+	if p == nil {
+		return
+	}
+	if sc := p.reqScope(); sc != nil {
+		sc.set(s.Name, v)
+	}
+}
+
+// reqScope: the seeds of one request. Written by page/layout bodies (single goroutine, before the render), read
+// by island renders — also from Suspense goroutines, hence the mutex.
+type reqScope struct {
+	mu    sync.Mutex
+	seeds map[string]any
+}
+
+func newReqScope() *reqScope { return &reqScope{seeds: map[string]any{}} }
+
+func (sc *reqScope) set(name string, v any) {
+	if sc == nil {
+		return
+	}
+	sc.mu.Lock()
+	sc.seeds[name] = v
+	sc.mu.Unlock()
+}
+
+func (sc *reqScope) get(name string) (any, bool) {
+	if sc == nil {
+		return nil, false
+	}
+	sc.mu.Lock()
+	v, ok := sc.seeds[name]
+	sc.mu.Unlock()
+	return v, ok
+}
+
+// script: the seed block for <head> ("" when nothing was seeded). A JSON data block is not executed, so it needs no
+// CSP nonce; encoding/json escapes < > & so the document cannot be broken out of. Nil slices / maps become [] / {}
+// like island props (an island doing items.map(...) must not meet null).
+func (sc *reqScope) script() string {
+	if sc == nil {
+		return ""
+	}
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if len(sc.seeds) == 0 {
+		return ""
+	}
+	seeds := make(map[string]any, len(sc.seeds))
+	for k, v := range sc.seeds {
+		seeds[k] = noNil(v)
+	}
+	b, err := json.Marshal(seeds)
+	if err != nil {
+		return ""
+	}
+	return `<script type="application/json" data-gotsx-stores>` + string(b) + `</script>`
+}
+
 // PageProps: 页面组件的 props, 由路由层构造
 type PageProps struct {
 	Params  map[string]string `json:"params"`
@@ -708,7 +817,11 @@ type PageProps struct {
 	Session map[string]string `json:"-"` // session values (read-only here; write them in actions via req.Session())
 	Flash   []Flash           `json:"-"` // one-shot messages (cleared after this render)
 	csrf    func() string     // lazy: the token is generated and the session cookie set only when a page actually reads props.csrf (anonymous pages send no Set-Cookie and stay CDN-cacheable)
+	scope   *reqScope         // store seeds of this request (seed(store, value) writes, island renders read); nil outside a request
 }
+
+// reqScope implements Seeder; LayoutProps / ErrorProps embed PageProps, so a layout's props seed as well.
+func (p PageProps) reqScope() *reqScope { return p.scope }
 
 // CSRF returns this session's CSRF token (for classic forms: <input type="hidden" name="_csrf" value={csrf} />); props.csrf in the
 // dialect compiles to this call. Read it outside <Suspense> boundaries (once the shell is flushed a cookie can no longer be set).
@@ -1273,9 +1386,8 @@ func (c *Ctx) N(n Node) {
 
 // Close: 闭合 head / body(引导脚本注入点); 其它标签由编译器直接写 </tag>
 func (c *Ctx) Close(tag string) {
-	if c.inject != "" && (tag == "head" || tag == "body") {
-		c.b.WriteString(c.inject)
-		c.inject = ""
+	if tag == "head" || tag == "body" {
+		c.writeInject()
 	}
 	c.b.WriteString("</")
 	c.b.WriteString(tag)

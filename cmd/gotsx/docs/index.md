@@ -17,6 +17,7 @@ cmd/hostgen/main.go      reflects host.Registry → app/.gen/host.d.ts + host.js
 app/pages/**.server.tsx  file routing: index, [id], [...slug], _layout, _404, _error
 app/components/*.server.tsx  server components (Go only)
 app/islands/*.client.tsx     islands: rendered by Go, then hydrated in the browser
+app/stores/*.client.tsx      stores: state shared by islands (createStore), seeded by pages (seed)
 app/.gen/                GENERATED: host.d.ts (what Go exposes), host.json, docs/ (these files)
 gen/                     GENERATED: pages_gen.go…, routes_gen.go, actions_gen.go, client/*.js, assets
 public/                  static files served at /public/* (embedded into the binary)
@@ -38,7 +39,7 @@ public/                  static files served at /public/* (embedded into the bin
 ## The mental model in five lines
 
 1. A `.server.tsx` file runs in Go on every request. It may call Go directly (`import { todos } from "host:data"`), synchronously. No `async`, `fetch`, DOM, timers, `Promise`.
-2. A `.client.tsx` file is an island: Go renders it once, the browser hydrates it as signals. Its props must be JSON-serializable. It talks to Go only through **typed actions** (`await toggle(id)`).
+2. A `.client.tsx` file is an island: Go renders it once, the browser hydrates it as signals. Its props must be JSON-serializable. It talks to Go only through **typed actions** (`await toggle(id)`). State shared by several islands lives in a **store** (`createStore` in a client module) that the page seeds per request (`seed(store, value)`).
 3. Types are bounded by Go: `number` is float64, absent primitives are zero values (`""`, `0`, `false`), `Record<string, T>` is a Go map, arrays are slices, `T | undefined` is a pointer-ish optional. No `any`, no classes, no generics of your own, no runtime type tests.
 4. Everything is compiled: a construct outside the subset is a compile error with `file:line:col`, never a runtime surprise.
 5. `gen/` and `app/.gen/` are outputs. Change `app/`, `host/`, `main.go`, `public/` and rebuild.

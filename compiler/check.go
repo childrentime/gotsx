@@ -63,7 +63,7 @@ func NewChecker(hostJSON []byte) (*Checker, error) {
 	c.global = newScope(nil)
 	for _, n := range []string{"useState", "useEffect", "useMemo", "String", "Number", "Boolean", "parseInt", "parseFloat",
 		"encodeURIComponent", "decodeURIComponent", "fetch", "setTimeout", "clearTimeout", "setInterval", "clearInterval",
-		"emit", "on", "alert", "confirm", "isNaN", "jsonLd", "redirect", "notFound",
+		"emit", "on", "alert", "confirm", "isNaN", "jsonLd", "redirect", "notFound", "createStore", "seed",
 		"t", "tv", "plural", "fmtNum", "fmtCur", "fmtDate", "lpath"} {
 		c.global.syms[n] = &Symbol{Name: n, Kind: SBuiltin}
 	}
@@ -289,6 +289,11 @@ func (c *Checker) checkModule(m *Module) {
 	}
 	// 第一遍: 声明顶层符号
 	for _, s := range m.Stmts {
+		switch s.(type) {
+		case *VarDecl, *FuncDecl, *InterfaceDecl, *TypeAlias, *ExportDefault, *EmptyStmt:
+		default:
+			c.fatal(stmtPos(s), "only const, function, interface and type declarations are allowed at module level (a statement here would run at import time)")
+		}
 		c.declareTop(s)
 	}
 	// 第二遍: 先模块级变量(内容数据), 再函数体
@@ -324,7 +329,7 @@ func (c *Checker) importInto(m *Module, im *Import) {
 	case im.From == "gotsx":
 		for _, n := range im.Names {
 			switch n.Name {
-			case "useState", "useEffect", "useMemo", "emit", "on", "Suspense":
+			case "useState", "useEffect", "useMemo", "emit", "on", "Suspense", "createStore", "seed":
 				m.Scope.syms[n.Local] = c.global.syms[n.Name]
 			case "Node", "PageProps", "LayoutProps", "ErrorProps", "Meta", "Flash":
 				m.Scope.types[n.Local] = c.global.types[n.Name]
@@ -634,7 +639,7 @@ func (c *Checker) resolveType(te TypeExpr, pos Pos) Type {
 
 func (c *Checker) checkFuncBody(d *FuncDecl) {
 	sc := newScope(c.scope)
-	fc := &fnCtx{component: d.Comp, async: d.Async}
+	fc := &fnCtx{decl: d, component: d.Comp, async: d.Async}
 	sc.fn = fc
 	d.Scope = sc
 	save := c.scope
@@ -683,6 +688,24 @@ func (c *Checker) bindPattern(pat *Pattern, t Type, kind SymKind) {
 		pat.Sym = sym
 		c.scope.syms[pat.Name] = sym
 	case PatObject:
+		if st, ok := t.(*StoreT); ok { // const { count, items } = cart: every name is a signal of the store
+			c.storeReadable(pat.Pos, st)
+			for _, pp := range pat.Props {
+				f := st.State.Field(pp.Key)
+				if f == nil {
+					c.fatal(pat.Pos, "store %s has no field %q", st.Sym.Name, pp.Key)
+				}
+				if pp.Pat.Kind != PatIdent || pp.Default != nil {
+					c.fatal(pat.Pos, "destructure store fields one level deep and without defaults (const { %s } = %s; then %s.…)", pp.Key, st.Sym.Name, pp.Key)
+				}
+				c.bindPattern(pp.Pat, f.Type, SSignal)
+				pp.Pat.Sym.Store = st
+			}
+			if pat.Rest != nil {
+				c.fatal(pat.Pos, "a rest pattern cannot be used on a store")
+			}
+			return
+		}
 		for _, pp := range pat.Props {
 			var ft Type = TAny
 			switch o := unopt(t).(type) {
@@ -899,6 +922,9 @@ func (c *Checker) checkVarDecl(d *VarDecl) {
 				case "useState":
 					c.checkUseState(d, call)
 					return
+				case "createStore":
+					c.checkCreateStore(d, call)
+					return
 				case "useMemo":
 					if len(call.Args) < 1 {
 						c.fatal(d.Pos, "useMemo needs a function")
@@ -971,6 +997,94 @@ func (c *Checker) checkUseState(d *VarDecl, call *Call) {
 	d.Pat.T = t
 }
 
+// checkCreateStore: export const cart = createStore<T>(init) — a module-level const of a client module. The state
+// is an object type (declared, host or inferred from the literal) whose fields are JSON-serializable; missing
+// fields of the literal are zero values (like any typed object literal).
+func (c *Checker) checkCreateStore(d *VarDecl, call *Call) {
+	if c.mod.Kind != "client" {
+		c.fatal(d.Pos, "createStore can only be used in a client module (*.client.tsx); a page seeds it with seed(store, value) and islands read it")
+	}
+	if c.scope != c.mod.Scope || !d.Const || d.Pat.Kind != PatIdent {
+		c.fatal(d.Pos, "createStore must be a module-level const: export const %s = createStore(init)", patName(d.Pat))
+	}
+	var t Type
+	if len(call.TypeArgs) == 1 {
+		t = c.resolveType(call.TypeArgs[0], d.Pos)
+	} else if d.Type != nil {
+		t = c.resolveType(d.Type, d.Pos)
+	}
+	if len(call.Args) != 1 {
+		c.fatal(d.Pos, "createStore needs an initial state object: createStore({ count: 0 })")
+	}
+	it := c.check(call.Args[0], t)
+	if t == nil {
+		t = it
+	}
+	state, ok := unopt(t).(*ObjT)
+	if !ok {
+		c.fatal(d.Pos, "the store state must be an object type, got %s (write createStore<State>({ … }) with an interface)", t)
+	}
+	if !assignable(it, state) {
+		c.errf(d.Pos, "store initial state: %s is not assignable to %s", it, state)
+	}
+	for _, f := range state.Fields {
+		if f.Name == "set" {
+			c.fatal(d.Pos, "a store field cannot be named %q (store.set is the updater)", "set")
+		}
+		if bad := unserializable(f.Type, map[*ObjT]bool{}); bad != nil {
+			c.fatal(d.Pos, "store field %q has type %s, which cannot be serialized (store state is JSON: primitives, arrays, records and object types)", f.Name, bad)
+		}
+	}
+	st := &StoreT{State: state}
+	call.Kind = "hook:createStore"
+	call.SetT(st)
+	d.Hook = "createStore"
+	c.bindPattern(d.Pat, st, SConst)
+	st.Sym = d.Pat.Sym
+}
+
+func patName(p *Pattern) string {
+	if p.Kind == PatIdent {
+		return p.Name
+	}
+	return "store"
+}
+
+// unserializable: the first component of t that JSON (the seed block, the island props) cannot carry; nil when fine
+func unserializable(t Type, seen map[*ObjT]bool) Type {
+	switch x := unopt(t).(type) {
+	case *Prim:
+		if x == TString || x == TNumber || x == TBool || x == TAny || x == TUndef {
+			return nil
+		}
+		return x
+	case *ArrT:
+		return unserializable(x.Elem, seen)
+	case *MapT:
+		return unserializable(x.Val, seen)
+	case *ObjT:
+		if seen[x] {
+			return nil
+		}
+		seen[x] = true
+		for _, f := range x.Fields {
+			if bad := unserializable(f.Type, seen); bad != nil {
+				return bad
+			}
+		}
+		return nil
+	}
+	return t
+}
+
+// storeReadable: store state is read (cart.count, const { count } = cart) only in client code — on the server the
+// island's render reads the seeded value through the render context, which only client components carry
+func (c *Checker) storeReadable(pos Pos, st *StoreT) {
+	if c.mod.Kind != "client" {
+		c.fatal(pos, "store %s can only be read in client code (*.client.tsx); a page provides its data with seed(%s, value)", st.Sym.Name, st.Sym.Name)
+	}
+}
+
 // isReactive: 表达式是否读取了 signal/memo(不进入箭头函数体; 条件/三元只看条件; map 只看接收者)
 func (c *Checker) isReactive(e Expr) bool {
 	switch x := e.(type) {
@@ -979,6 +1093,9 @@ func (c *Checker) isReactive(e Expr) bool {
 	case *Ident:
 		return x.Sym != nil && (x.Sym.Kind == SSignal || x.Sym.Kind == SMemo)
 	case *Member:
+		if _, ok := x.X.T().(*StoreT); ok && x.Name != "set" {
+			return true // cart.count is a signal read
+		}
 		return c.isReactive(x.X)
 	case *Index:
 		return c.isReactive(x.X) || c.isReactive(x.I)
@@ -1206,7 +1323,9 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 				if f == nil {
 					c.fatal(x.Pos, "type %s has no field %q", o, p.Key)
 				}
-				c.check(p.Val, f.Type)
+				if got := c.check(p.Val, f.Type); !assignable(got, f.Type) {
+					c.errf(p.Val.GetPos(), "field %s: %s is not assignable to %s", p.Key, got, f.Type)
+				}
 			}
 			return o
 		}
@@ -1295,6 +1414,7 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 		if id, ok := x.Target.(*Ident); ok && id.Sym != nil && id.Sym.Kind == SConst {
 			c.errf(x.Pos, "cannot assign to const %s", id.Name)
 		}
+		c.noStoreWrite(x.Pos, x.Target, x.Op)
 		if x.Op != "=" && x.Op != "+=" && !isNumber(tt) && !isAny(tt) {
 			c.errf(x.Pos, "%s only works on number, got %s", x.Op, tt)
 		}
@@ -1304,6 +1424,7 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 		if !isNumber(tt) && !isAny(tt) {
 			c.errf(x.Pos, "%s only works on number, got %s", x.Op, tt)
 		}
+		c.noStoreWrite(x.Pos, x.X, x.Op)
 		if id, ok := x.X.(*Ident); ok && id.Sym != nil && id.Sym.Kind == SConst {
 			c.errf(x.Pos, "const %s cannot be modified with %s", id.Name, x.Op)
 		}
@@ -1426,6 +1547,18 @@ func (c *Checker) checkMember(x *Member) Type {
 		} else {
 			res = &HostFnT{M: m}
 		}
+	case *StoreT:
+		c.storeReadable(x.Pos, t)
+		if x.Name == "set" {
+			res = &StoreSetT{Store: t}
+			break
+		}
+		f := t.State.Field(x.Name)
+		if f == nil {
+			c.fatal(x.Pos, "store %s has no field %q (state is %s)", t.Sym.Name, x.Name, t.State)
+		}
+		x.GoName = f.Go
+		res = f.Type
 	case *GlobalT:
 		res = &BuiltinT{Recv: t, Name: x.Name}
 	default:
@@ -1476,6 +1609,10 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 				c.fatal(x.Pos, "useState can only be written as const [x, setX] = useState(init)")
 			case "useMemo":
 				c.fatal(x.Pos, "useMemo can only be written as const x = useMemo(() => ...)")
+			case "createStore":
+				c.fatal(x.Pos, "createStore can only be written as a module-level const of a client module: export const cart = createStore(init)")
+			case "seed":
+				return c.checkSeed(x)
 			case "useEffect":
 				if len(x.Args) < 1 {
 					c.fatal(x.Pos, "useEffect needs a function")
@@ -1639,6 +1776,20 @@ func (c *Checker) checkCall(x *Call, want Type) Type {
 			c.check(a, &FnT{Params: []*FnParam{{Name: "prev", Type: t.Elem}}, Ret: t.Elem})
 		} else {
 			c.check(x.Args[0], t.Elem)
+		}
+		return TVoid
+	case *StoreSetT:
+		if fc := c.scope.fnCtx(); fc == nil || fc.component { // like actions: never during render
+			c.fatal(x.Pos, "%s.set runs in the browser after the render: call it from an event handler, an effect or a plain function, not in a component body", t.Store.Sym.Name)
+		}
+		if len(x.Args) != 1 {
+			c.fatal(x.Pos, "%s.set takes one argument: a mutator (s) => { … } or a whole state value", t.Store.Sym.Name)
+		}
+		x.Kind = "storeSet"
+		if a, ok := x.Args[0].(*Arrow); ok {
+			c.check(a, &FnT{Params: []*FnParam{{Name: "draft", Type: t.Store.State}}, Ret: TVoid})
+		} else if got := c.check(x.Args[0], t.Store.State); !assignable(got, t.Store.State) {
+			c.errf(x.Args[0].GetPos(), "%s.set: %s is not assignable to %s", t.Store.Sym.Name, got, t.Store.State)
 		}
 		return TVoid
 	case *CompT:
@@ -1899,14 +2050,84 @@ func (c *Checker) requireMutable(pos Pos, recv Expr, method string) {
 	}
 	switch r := recv.(type) {
 	case *Ident:
+		if r.Sym != nil && r.Sym.Store != nil {
+			c.errf(pos, "%s cannot mutate store field %s directly; mutate it inside %s.set((s) => { s.%s.%s(…) })", method, r.Name, r.Sym.Store.Sym.Name, r.Name, method)
+			return
+		}
 		if r.Sym != nil && (r.Sym.Kind == SSignal || r.Sym.Kind == SMemo) {
 			c.errf(pos, "%s cannot mutate state %s; use the immutable form set%s([...%s, x])", method, r.Name, strings.ToUpper(r.Name[:1])+r.Name[1:], r.Name)
 		}
 		return
-	case *Member, *Index:
+	case *Member:
+		if st := storeRoot(r); st != nil {
+			c.errf(pos, "%s cannot mutate store state directly; mutate it inside %s.set((s) => { … })", method, st.Sym.Name)
+		}
+		return
+	case *Index:
 		return
 	}
 	c.errf(pos, "%s must be called on a variable / field / index (it mutates an addressable array in place)", method)
+}
+
+// storeRoot: the store an expression reads through (cart.items[0].qty → cart); nil otherwise
+func storeRoot(e Expr) *StoreT {
+	for {
+		switch x := e.(type) {
+		case *Paren:
+			e = x.X
+		case *NonNull:
+			e = x.X
+		case *Member:
+			if st, ok := x.X.T().(*StoreT); ok {
+				return st
+			}
+			e = x.X
+		case *Index:
+			e = x.X
+		case *Ident:
+			if x.Sym != nil {
+				return x.Sym.Store
+			}
+			return nil
+		default:
+			return nil
+		}
+	}
+}
+
+// noStoreWrite: store state is immutable outside store.set (cart.count = 1, count++, cart.items[0].qty += 1)
+func (c *Checker) noStoreWrite(pos Pos, target Expr, op string) {
+	if id, ok := target.(*Ident); ok && id.Sym != nil && id.Sym.Store != nil {
+		c.errf(pos, "cannot assign to store field %s; change it inside %s.set((s) => { s.%s %s … })", id.Name, id.Sym.Store.Sym.Name, id.Name, op)
+		return
+	}
+	if st := storeRoot(target); st != nil {
+		c.errf(pos, "store state is read-only outside %s.set((s) => { … })", st.Sym.Name)
+	}
+}
+
+// checkSeed: seed(store, value) — the body of a page or layout's default component, before the JSX. It runs before
+// any HTML is written, so every island of the request (layout chrome included) renders with the value.
+func (c *Checker) checkSeed(x *Call) Type {
+	if c.mod.Kind != "server" || !underPages(c.mod) {
+		c.fatal(x.Pos, "seed() can only be called in a page or layout (app/pages/**/*.server.tsx)")
+	}
+	fc := c.scope.fnCtx()
+	if fc == nil || !fc.component || fc.decl == nil || fc.decl.Sym != c.mod.Default {
+		c.fatal(x.Pos, "seed(store, value) must be called in the body of the page's default component (not in meta(), a helper, a callback or JSX)")
+	}
+	if len(x.Args) != 2 {
+		c.fatal(x.Pos, "seed(store, value) takes two arguments")
+	}
+	st, ok := c.check(x.Args[0], nil).(*StoreT)
+	if !ok {
+		c.fatal(x.Args[0].GetPos(), "the first argument of seed must be a store (export const x = createStore(…) in a client module)")
+	}
+	if got := c.check(x.Args[1], st.State); !assignable(got, st.State) {
+		c.errf(x.Args[1].GetPos(), "seed value: %s is not assignable to %s", got, st.State)
+	}
+	x.Kind = "global:seed"
+	return TVoid
 }
 
 func (c *Checker) checkBinary(x *Binary, want Type) Type {
@@ -2040,6 +2261,9 @@ func (c *Checker) checkJSX(x *JSXElem) Type {
 		x.Comp = sym
 		if sym.Go == "gotsx.Suspense" && c.mod.Kind != "server" {
 			c.fatal(x.Pos, "Suspense is only available in server components (*.server.tsx)")
+		}
+		if sym.Module != nil && sym.Module.Kind == "client" && sym != sym.Module.Default && c.mod.Kind != "client" {
+			c.fatal(x.Pos, "%s is a helper component of a client module, not an island (only the default export is); use it inside islands, or move it to a shared module (*.tsx)", x.Tag)
 		}
 		props := sym.Comp.Props
 		seen := map[string]bool{}
@@ -2194,6 +2418,10 @@ func hostParamName(p HostParam, i int) string {
 func assignable(got, want Type) bool {
 	if got == nil || want == nil || got == TAny || want == TAny || got == want {
 		return true
+	}
+	if _, ok := got.(*StoreT); ok { // a store is only ever a store (seed's first argument, a member receiver, a destructuring source)
+		_, ok := want.(*StoreT)
+		return ok
 	}
 	if got == TUndef { // absence is the zero value of every type in the dialect (f(1, undefined), [1, undefined], x = undefined)
 		return true

@@ -35,6 +35,12 @@ declare module "gotsx" {
   /** Cross-island event bus (client only). */
   export function emit(name: string, detail?: unknown): void;
   export function on(name: string, fn: (detail: any) => void): void;
+  /** A store shared by islands: fields read as signals (cart.count / const { count } = cart); set() from handlers and effects. */
+  export type Store<T> = T & { set(update: T | ((draft: T) => void)): void };
+  /** Module-level const of a client module: export const cart = createStore<State>({ … }). Missing fields are zero values. */
+  export function createStore<T extends object>(init: T): Store<T>;
+  /** Page / layout body only: islands of this request render with value and the browser's store starts from it. */
+  export function seed<T extends object>(store: Store<T>, value: T): void;
 }
 
 declare global {

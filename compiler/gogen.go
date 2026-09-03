@@ -103,12 +103,19 @@ func GenGo(c *Checker, m *Module, pkg, runtimeImport, hostImport string) (src st
 	for _, s := range m.Stmts {
 		switch d := s.(type) {
 		case *FuncDecl:
-			if d.Async || (!d.Comp && clientOnly(d.Body.Stmts)) {
-				continue // 只进 JS 后端
+			if d.Async || (!d.Comp && (clientOnly(d.Body.Stmts) || readsStore(d.Body.Stmts))) {
+				continue // 只进 JS 后端(a helper that reads a store has no render context on the server: browser only, like DOM code)
 			}
 			g.genFunc(d)
 		case *VarDecl:
 			sym := d.Pat.Sym
+			if d.Hook == "createStore" { // the store: its initial value; a page's seed(store, value) overrides it per request
+				st := sym.Type.(*StoreT)
+				g.mark(d.Pos)
+				g.line("var %s = gotsx.NewStore(%q, %s)", sym.Go, sym.Go, g.conv(d.Init.(*Call).Args[0], st.State))
+				g.line("")
+				continue
+			}
 			if isNode(sym.Type) {
 				g.line("var %s gotsx.Node = %s", sym.Go, g.toNode(d.Init, false))
 			} else {
@@ -172,6 +179,8 @@ func (g *goGen) goType(t Type) string {
 		return "func(" + strings.Join(ps, ", ") + ") " + ret
 	case *SetterT:
 		return "func(any)"
+	case *StoreT:
+		return "*gotsx.Store[" + g.goType(x.State) + "]"
 	}
 	return "any"
 }
@@ -233,15 +242,19 @@ func (g *goGen) genFunc(d *FuncDecl) {
 		comp := d.Sym.Comp
 		props := comp.Props
 		name := d.Sym.Go
+		ctxParam := ""
+		if g.m.Kind == "client" { // components of client modules render with the request context (store seeds)
+			ctxParam = "_ctx *gotsx.Ctx, "
+		}
 		if g.m.Kind == "client" && d.Default {
-			// 岛: 外壳 + 预渲染
+			// 岛: 外壳 + 预渲染(the body runs when the island is written, with the context in hand)
 			g.line("func %s(props %s) gotsx.Node {", name, props.GoName)
-			g.line("\treturn gotsx.Island(%q, props, %s_ssr(props))", g.m.Name, name)
+			g.line("\treturn gotsx.Island(%q, props, func(_ctx *gotsx.Ctx) { _ctx.N(%s_ssr(_ctx, props)) })", g.m.Name, name)
 			g.line("}")
 			g.line("")
 			name += "_ssr"
 		}
-		g.line("func %s(props %s) gotsx.Node {", name, props.GoName)
+		g.line("func %s(%sprops %s) gotsx.Node {", name, ctxParam, props.GoName)
 		g.ind++
 		g.curRet = TNode
 		if len(d.Params) > 0 {
@@ -481,7 +494,7 @@ func (g *goGen) fnRet(r *ReturnStmt) Type {
 func (g *goGen) exprStmt(x Expr) {
 	switch e := x.(type) {
 	case *Call:
-		if e.Kind == "hook:useEffect" || e.Kind == "hook:useEffectOnce" || containsAwait(e) {
+		if e.Kind == "hook:useEffect" || e.Kind == "hook:useEffectOnce" || e.Kind == "storeSet" || containsAwait(e) {
 			return
 		}
 		if e.Kind == "host" && e.Host.Throws && e.Host.Ret == nil {
@@ -719,6 +732,10 @@ func clientOnly(n any) bool {
 				if y.Sym != nil && y.Sym.Kind == SBuiltin && (y.Sym.Type == TAny || clientOnlyGlobals[y.Sym.Name]) {
 					found = true
 				}
+			case *Call:
+				if y.Kind == "storeSet" {
+					found = true
+				}
 			case *Arrow:
 				if y.Body != nil {
 					for _, s := range y.Body.Stmts {
@@ -794,6 +811,92 @@ func clientOnly(n any) bool {
 	return found
 }
 
+// readsStore: does a module-level helper read a store (cart.count / const { count } = cart)? On the server only
+// components carry the render context that holds the request's seed, so such a helper is browser-only (Go gets
+// no definition: calling it during a render fails at go build with the .tsx line, like a DOM helper).
+func readsStore(stmts []Stmt) bool {
+	found := false
+	var walkS func(s Stmt)
+	walkE := func(e Expr) {
+		walkExpr(e, func(x Expr) bool {
+			if found {
+				return false
+			}
+			switch y := x.(type) {
+			case *Member:
+				if _, ok := y.X.T().(*StoreT); ok && y.Name != "set" {
+					found = true
+				}
+			case *Arrow:
+				if y.Body != nil {
+					for _, s := range y.Body.Stmts {
+						walkS(s)
+					}
+				}
+			}
+			return !found
+		})
+	}
+	walkS = func(s Stmt) {
+		if found || s == nil {
+			return
+		}
+		switch d := s.(type) {
+		case *VarDecl:
+			if d.Init != nil && d.Pat.Kind == PatObject {
+				if _, isStore := d.Init.T().(*StoreT); isStore { // const { count } = cart
+					found = true
+					return
+				}
+			}
+			walkE(d.Init)
+		case *ReturnStmt:
+			walkE(d.X)
+		case *ExprStmt:
+			walkE(d.X)
+		case *ThrowStmt:
+			walkE(d.X)
+		case *IfStmt:
+			walkE(d.Cond)
+			walkS(d.Then)
+			walkS(d.Else)
+		case *ForOfStmt:
+			walkE(d.Iter)
+			walkS(d.Body)
+		case *ForStmt:
+			walkS(d.Init)
+			walkE(d.Cond)
+			walkE(d.Update)
+			walkS(d.Body)
+		case *WhileStmt:
+			walkE(d.Cond)
+			walkS(d.Body)
+		case *SwitchStmt:
+			walkE(d.Disc)
+			for _, cs := range d.Cases {
+				walkE(cs.Test)
+				for _, x := range cs.Body {
+					walkS(x)
+				}
+			}
+		case *Block:
+			for _, x := range d.Stmts {
+				walkS(x)
+			}
+		case *TryStmt:
+			walkS(d.Body)
+			walkS(d.Catch)
+			walkS(d.Finally)
+		case *FuncDecl:
+			walkS(d.Body)
+		}
+	}
+	for _, s := range stmts {
+		walkS(s)
+	}
+	return found
+}
+
 func (g *goGen) stub(ft *FnT, params []string) string {
 	body := "{}"
 	if ft.Ret != nil && ft.Ret != TVoid && !ft.Async {
@@ -851,6 +954,12 @@ func (g *goGen) varDecl(d *VarDecl) {
 		return
 	}
 	tmp := g.newTmp()
+	if st, ok := d.Init.T().(*StoreT); ok { // const { count } = cart: the request's value of the store
+		g.line("%s := %s.Get(_ctx)", tmp, g.expr(d.Init))
+		g.line("_ = %s", tmp)
+		g.bindParam(d.Pat, tmp, st.State)
+		return
+	}
 	g.line("%s := %s", tmp, g.expr(d.Init))
 	g.line("_ = %s", tmp)
 	g.bindParam(d.Pat, tmp, d.Init.T())
@@ -1121,6 +1230,19 @@ func (g *goGen) member(x *Member) string {
 	case *HostModT:
 		g.needHost = true
 		return t.Go + "." + x.GoName
+	case *StoreT:
+		if x.Name == "set" {
+			g.fail(x.Pos, "%s.set can only be used in client code", t.Sym.Name)
+		}
+		f := t.State.Field(x.Name)
+		s := g.expr(x.X) + ".Get(_ctx)." + f.Go
+		if numConv(f.GoType) {
+			return "float64(" + s + ")"
+		}
+		if numConvSlice(f.GoType) {
+			return "gotsx.Nums(" + s + ")"
+		}
+		return s
 	}
 	g.fail(x.Pos, "Go backend: %s has no accessible member %s", xt, x.Name)
 	return ""
@@ -1174,8 +1296,13 @@ func (g *goGen) call(x *Call) string {
 			return "gotsx.Redirect(" + arg() + ", " + code + ")"
 		case "notFound":
 			return "gotsx.NotFound()"
+		case "seed":
+			st := x.Args[0].T().(*StoreT)
+			return "gotsx.Seed(props, " + g.expr(x.Args[0]) + ", " + g.conv(x.Args[1], st.State) + ")"
 		}
 		g.fail(x.Pos, "%s can only be used in client code", name)
+	case x.Kind == "storeSet":
+		g.fail(x.Pos, "store.set can only be used in client code (an event handler, effect or plain function)")
 	case x.Kind == "setter":
 		return g.expr(x.Fn) + "(" + g.expr(x.Args[0]) + ")"
 	case x.Kind == "hook:useMemo":
@@ -1692,7 +1819,11 @@ func (g *goGen) jsxElem(x *JSXElem) string {
 		if len(x.Children) > 0 {
 			fs = append(fs, "Children: "+g.childrenNode(x.Children))
 		}
-		return x.Comp.Go + "(" + comp.Props.GoName + "{" + strings.Join(fs, ", ") + "})"
+		ctxArg := ""
+		if x.Comp.Module != nil && x.Comp.Module.Kind == "client" && x.Comp != x.Comp.Module.Default { // a helper component of a client module takes the render context (islands wrap it themselves)
+			ctxArg = "_ctx, "
+		}
+		return x.Comp.Go + "(" + ctxArg + comp.Props.GoName + "{" + strings.Join(fs, ", ") + "})"
 	}
 	w := &htmlWriter{g: g}
 	w.elem(x)

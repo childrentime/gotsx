@@ -13,7 +13,7 @@ export default function OrdersPage({ cookies, locale, path }: PageProps) {
   const sid = cookies.sid ?? "";
   const orders = list(sid);
   return (
-    <Layout sid={sid} locale={lc} active="orders" wide path={path}>
+    <Layout locale={lc} active="orders" wide path={path}>
       <h1 class="mb-5 text-xl font-semibold tracking-tight">{t(lc, "orders.title")}</h1>
       {orders.length === 0 ? (
         <div class="card flex flex-col items-center py-24 text-center">

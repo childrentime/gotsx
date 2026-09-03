@@ -106,6 +106,21 @@ type SetterT struct{ Elem Type }
 
 func (t *SetterT) String() string { return "Setter<" + t.Elem.String() + ">" }
 
+// StoreT: `export const cart = createStore(init)` in a client module — in the browser a set of signals (one per
+// top-level field), on the server the per-request seeded value. Sym is the module-level const; its Go name is
+// the store's unique key (the Go variable, the JSON key of the seed block).
+type StoreT struct {
+	State *ObjT
+	Sym   *Symbol
+}
+
+func (t *StoreT) String() string { return "Store<" + t.State.String() + ">" }
+
+// StoreSetT: store.set — (draft: T) => void mutator or a whole value; client handlers/effects only
+type StoreSetT struct{ Store *StoreT }
+
+func (t *StoreSetT) String() string { return "Store<" + t.Store.State.String() + ">.set" }
+
 type CompT struct {
 	Name   string
 	Props  *ObjT
@@ -235,7 +250,8 @@ type Symbol struct {
 	Host   *HostMember
 	Comp   *CompT
 	Async  bool
-	Pos    Pos // 声明位置(编辑器跳转用); 内建为空
+	Pos    Pos     // 声明位置(编辑器跳转用); 内建为空
+	Store  *StoreT // a field destructured from a store (const { count } = cart): a signal that only store.set may change
 }
 
 type Scope struct {
@@ -246,6 +262,7 @@ type Scope struct {
 }
 
 type fnCtx struct {
+	decl      *FuncDecl // the function declaration (nil for arrows)
 	component bool
 	async     bool
 	declared  bool // the return type was written down (returns are checked against want)

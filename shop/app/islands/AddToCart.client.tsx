@@ -1,6 +1,7 @@
-import { useState, emit } from "gotsx";
+import { useState } from "gotsx";
 import type { Variant } from "host:catalog";
 import { add } from "host:cart";                 // typed action: CartModule.Add over a same-origin POST
+import { cart } from "../stores/cart";
 import Icon from "../ui/Icon";
 
 export default function AddToCart({ id, variants, stock, locale = "" }: { id: string; variants: Variant[]; stock: number; locale?: string }) {
@@ -20,10 +21,9 @@ export default function AddToCart({ id, variants, stock, locale = "" }: { id: st
     setBusy(true);
     setMsg("");
     try {
-      const cv = await add(id, sel.join(" / "), qty);   // Promise<CartView>, typed from Go
+      cart.set(await add(id, sel.join(" / "), qty));   // Promise<CartView>, typed from Go: the badge (and any other island) follows the store
       setGood(true);
       setMsg(t(locale, "add.added"));
-      emit("cart:changed", { count: cv.count });
     } catch (e) {
       setGood(false);
       setMsg(e.message);                                // gotsx.Fail("Only N left in stock") → 400 with the message

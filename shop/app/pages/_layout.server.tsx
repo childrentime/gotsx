@@ -1,10 +1,14 @@
 import type { LayoutProps } from "gotsx";
+import { seed } from "gotsx";
 import { url } from "host:site";
+import { view } from "host:cart";
+import { cart } from "../stores/cart";
 
 // The document shell for every page. <head> is driven by the page's `export function meta(props)` (LayoutProps.meta):
 // title, description, canonical, og:image and robots; components/Layout.server.tsx renders the store chrome in the body.
-export default function Root({ path, locale, meta, children }: LayoutProps) {
+export default function Root({ path, locale, meta, cookies, children }: LayoutProps) {
   const lc = locale !== "" ? locale : "en";
+  seed(cart, view(cookies.sid ?? ""));   // every island of this request (badge, cart page, checkout) renders this cart and hydrates from it
   const title = meta.title !== "" ? `${meta.title} · gomu` : "gomu";
   const desc = meta.description !== "" ? meta.description : t(lc, "meta.description");
   const canonical = meta.canonical !== "" ? meta.canonical : url(lpath(lc, path));

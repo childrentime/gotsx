@@ -34,6 +34,23 @@ with sync_playwright() as p:
     ok("add to cart message", "Added to cart" in pg.locator("span.text-success").inner_text())
     ok("cart add via action", any(u == "/_gotsx/act/cart/add" and s == 200 for s, u in acts), acts)
     ok("cart badge updated", pg.locator("a[href='/cart'] span.absolute").inner_text().strip() == "1")
+    # the shared cart store: the layout seeds it per request, so a fresh document renders the badge from the server's cart
+    html = ctx.request.get(B + "/").text()
+    ok("cart seed block in head", '<script type="application/json" data-gotsx-stores>' in html and '"count":1' in html.split("</head>")[0], html[:300])
+    ok("badge rendered from the seed", re.search(r'<gotsx-island name="CartBadge"[^>]*>.*?<!--\$-->1<!--/-->', html, re.S) is not None)
+    # SPA navigation to the cart page: the new document's seed feeds the store the cart page island reads (no props)
+    pg.locator("a[href='/cart']").first.click()
+    for _ in range(40):
+        if pg.url.endswith("/cart"): break
+        pg.wait_for_timeout(100)
+    pg.wait_for_timeout(600)
+    ok("cart page reads the store after SPA nav", pg.url.endswith("/cart") and pg.locator("span.w-9").first.inner_text().strip() == "1", pg.url)
+    ok("badge kept through SPA nav", pg.locator("a[href='/cart'] span.absolute").inner_text().strip() == "1")
+    pg.go_back()
+    for _ in range(40):
+        if href in pg.url: break
+        pg.wait_for_timeout(100)
+    pg.wait_for_timeout(400)
     # stock error path (400 with message) through the same action, over HTTP
     r = ctx.request.post(B + "/_gotsx/act/cart/add", data=f'["{href.split("/")[-1]}", "x", 99999]', headers={"Content-Type": "application/json", "X-Gotsx-Action": "1", "Origin": B})
     ok("stock error is 400 with message", r.status == 400 and "left in stock" in r.json()["error"], (r.status, r.text()))
@@ -55,8 +72,10 @@ with sync_playwright() as p:
     pg.locator("button[aria-label=Increase]").first.click(); pg.wait_for_timeout(900)
     ok("qty via action", any(u == "/_gotsx/act/cart/setQty" and s == 200 for s, u in acts), acts)
     ok("qty is 2", pg.locator("span.w-9").first.inner_text().strip() == "2")
+    ok("badge follows the cart page through the store", pg.locator("a[href='/cart'] span.absolute").inner_text().strip() == "2")
     pg.locator("button[aria-label=Remove]").first.click(); pg.wait_for_timeout(900)
     ok("cart empty after remove", "Your cart is empty" in pg.locator("main").inner_text())
+    ok("badge cleared through the store", pg.locator("a[href='/cart'] span.absolute").count() == 0)
     # re-add and checkout
     pg.goto(B + href); pg.wait_for_timeout(1000)
     groups = pg.locator("div.mt-5.space-y-5 > div > div.flex.flex-wrap")

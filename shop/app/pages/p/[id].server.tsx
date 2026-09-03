@@ -24,7 +24,6 @@ export function meta(props: PageProps): Meta {
 
 export default function ProductPage({ params, cookies, locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
-  const sid = cookies.sid ?? "";
   const p = get(params.id);
   const reviews = productReviews(p.id);
   const off = Math.round((1 - p.price / p.orig) * 100);
@@ -48,7 +47,7 @@ export default function ProductPage({ params, cookies, locale, path }: PageProps
   const dist = [{ label: tv(lc, "product.stars", { n: "5" }), pct: 78 }, { label: tv(lc, "product.stars", { n: "4" }), pct: 16 }, { label: tv(lc, "product.stars", { n: "3" }), pct: 6 }];
   const features = [t(lc, "feature.1"), t(lc, "feature.2"), t(lc, "feature.3"), t(lc, "feature.4"), t(lc, "feature.5"), t(lc, "feature.6")];
   return (
-    <Layout sid={sid} locale={lc} active={p.category} wide path={path}>
+    <Layout locale={lc} active={p.category} wide path={path}>
       {jsonLd(ld)}
       <nav class="mb-5 flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="breadcrumb">
         <a href="/" class="transition-colors hover:text-foreground">{t(lc, "nav.home")}</a><Icon name="chevron-right" className="h-3 w-3" />

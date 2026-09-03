@@ -1,15 +1,13 @@
 import type { Node } from "gotsx";
 import { categories } from "host:catalog";
-import { view } from "host:cart";
 import CartBadge from "../islands/CartBadge.client";
 import LocaleSwitch from "../islands/LocaleSwitch.client";
 import Icon from "../ui/Icon";
 
 // The store chrome (service bar, header with search and cart, category nav, footer) around a page's content.
 // The document itself — <html>, <head> from the page meta — is pages/_layout.server.tsx.
-export default function Layout({ sid, active = "", q = "", wide = false, locale = "en", path = "", children }: { sid: string; active?: string; q?: string; wide?: boolean; locale?: string; path?: string; children?: Node }) {
+export default function Layout({ active = "", q = "", wide = false, locale = "en", path = "", children }: { active?: string; q?: string; wide?: boolean; locale?: string; path?: string; children?: Node }) {
   const lc = locale !== "" ? locale : "en";
-  const cart = view(sid);
   const cats = categories();
   const container = wide ? "mx-auto w-full max-w-[1200px] px-6" : "container-page";
   const other = lc === "en" ? "zh" : "en";
@@ -43,7 +41,7 @@ export default function Layout({ sid, active = "", q = "", wide = false, locale 
             <a href={lpath(lc, "/orders")} class={active === "orders" ? "hidden shrink-0 items-center gap-1.5 text-sm font-medium text-foreground sm:flex" : "hidden shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:flex"}>
               <Icon name="package" /> {t(lc, "nav.orders")}
             </a>
-            <CartBadge count={cart.count} label={t(lc, "nav.cart")} />
+            <CartBadge label={t(lc, "nav.cart")} />
           </div>
           <div class={container}>
             <nav class="no-scrollbar -mx-1 flex items-center gap-0.5 overflow-x-auto pb-2 text-[13px]">

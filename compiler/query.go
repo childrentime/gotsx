@@ -289,23 +289,25 @@ func (c *Checker) DefinitionAt(file string, line, col int) *Location {
 func code(s string) string { return "```ts\n" + s + "\n```" }
 
 var builtinDocs = map[string]string{
-	"useState":  "useState<T>(init: T): [T, (v: T | ((prev: T) => T)) => void]\n\nServer: the initial value (single-pass SSR). Client: a signal; a const that reads it is a memo.",
-	"useEffect": "useEffect(fn: () => void, deps?: []): void\n\nClient only. Dependencies are tracked automatically; deps [] runs once on mount.",
-	"useMemo":   "useMemo<T>(fn: () => T): T\n\nExplicit memo. Usually unnecessary: a signal-dependent const is memoized automatically.",
-	"emit":      "emit(name: string, detail?: unknown): void\n\nCross-island event bus (client only).",
-	"on":        "on(name: string, fn: (detail: any) => void): void\n\nSubscribe to a cross-island event (client only).",
-	"Suspense":  "<Suspense fallback={Node}>children</Suspense>\n\nStreaming boundary (server only): the fallback ships with the shell, children render in their own goroutine and are streamed in.",
-	"redirect":  "redirect(url: string, status?: number): never\n\nServer pages only: abort the render and answer with a 3xx (default 302).",
-	"notFound":  "notFound(): never\n\nServer pages only: abort the render and answer with the 404 page.",
-	"jsonLd":    "jsonLd(json: string): Node\n\nA safe <script type=\"application/ld+json\"> (pass JSON.stringify(...)).",
-	"t":         "t(locale: string, key: string): string\n\ni18n lookup with fallback to the default locale.",
-	"tv":        "tv(locale: string, key: string, vars: Record<string, string>): string\n\ni18n lookup with {name} interpolation.",
-	"plural":    "plural(locale: string, key: string, n: number): string\n\nCLDR-lite plural (\"one|other\" forms, {n} placeholder).",
-	"fmtNum":    "fmtNum(locale: string, n: number): string",
-	"fmtCur":    "fmtCur(locale: string, cents: number): string",
-	"fmtDate":   "fmtDate(locale: string, iso: string): string",
-	"lpath":     "lpath(locale: string, path: string): string\n\nAdds the locale prefix in URL-prefix mode.",
-	"isoDate":   "isoDate(ms: number): string\n\nMilliseconds → RFC 3339 (UTC), identical on both sides.",
+	"useState":    "useState<T>(init: T): [T, (v: T | ((prev: T) => T)) => void]\n\nServer: the initial value (single-pass SSR). Client: a signal; a const that reads it is a memo.",
+	"useEffect":   "useEffect(fn: () => void, deps?: []): void\n\nClient only. Dependencies are tracked automatically; deps [] runs once on mount.",
+	"useMemo":     "useMemo<T>(fn: () => T): T\n\nExplicit memo. Usually unnecessary: a signal-dependent const is memoized automatically.",
+	"emit":        "emit(name: string, detail?: unknown): void\n\nCross-island event bus (client only).",
+	"on":          "on(name: string, fn: (detail: any) => void): void\n\nSubscribe to a cross-island event (client only).",
+	"createStore": "createStore<T>(init: T): Store<T>\n\nA store shared by islands (module-level const of a client module). Fields are signals (cart.count, const { count } = cart); cart.set((s) => { … }) or cart.set(value) updates it from handlers and effects. A page seeds it per request with seed(cart, value).",
+	"seed":        "seed<T>(store: Store<T>, value: T): void\n\nPage / layout body only: the islands of this request render with value and the browser's store starts from it (no flash, no refetch).",
+	"Suspense":    "<Suspense fallback={Node}>children</Suspense>\n\nStreaming boundary (server only): the fallback ships with the shell, children render in their own goroutine and are streamed in.",
+	"redirect":    "redirect(url: string, status?: number): never\n\nServer pages only: abort the render and answer with a 3xx (default 302).",
+	"notFound":    "notFound(): never\n\nServer pages only: abort the render and answer with the 404 page.",
+	"jsonLd":      "jsonLd(json: string): Node\n\nA safe <script type=\"application/ld+json\"> (pass JSON.stringify(...)).",
+	"t":           "t(locale: string, key: string): string\n\ni18n lookup with fallback to the default locale.",
+	"tv":          "tv(locale: string, key: string, vars: Record<string, string>): string\n\ni18n lookup with {name} interpolation.",
+	"plural":      "plural(locale: string, key: string, n: number): string\n\nCLDR-lite plural (\"one|other\" forms, {n} placeholder).",
+	"fmtNum":      "fmtNum(locale: string, n: number): string",
+	"fmtCur":      "fmtCur(locale: string, cents: number): string",
+	"fmtDate":     "fmtDate(locale: string, iso: string): string",
+	"lpath":       "lpath(locale: string, path: string): string\n\nAdds the locale prefix in URL-prefix mode.",
+	"isoDate":     "isoDate(ms: number): string\n\nMilliseconds → RFC 3339 (UTC), identical on both sides.",
 }
 
 func (c *Checker) symbolHover(s *Symbol, name string) *Hover {
@@ -469,6 +471,13 @@ func (c *Checker) memberHover(x *Member) *Hover {
 		}
 	case *GlobalT:
 		return &Hover{Text: code("(builtin) " + t.Name + "." + x.Name)}
+	case *StoreT:
+		if x.Name == "set" {
+			return &Hover{Text: code("(store) " + t.Sym.Name + ".set(update: ((draft: " + t.State.String() + ") => void) | " + t.State.String() + "): void   // client handlers / effects only")}
+		}
+		if f := t.State.Field(x.Name); f != nil {
+			return &Hover{Text: code("(store field) " + t.Sym.Name + "." + x.Name + ": " + typeStr(f.Type) + "   // a signal in the browser; the request's seed on the server")}
+		}
 	}
 	return nil
 }

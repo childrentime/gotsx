@@ -1,5 +1,5 @@
 /* gotsx 岛加载器 + SPA 跳转。页面本身零 JS; 岛按需 import(); 跳转 = 拉 HTML → idiomorph → 岛按 DOM 同一性存活 */
-import { mount } from "./runtime.js";
+import { mount, seedStores } from "./runtime.js";
 /* idiomorph(~11 KB gz)只在第一次 SPA 跳转时才需要: 懒加载, 首屏 JS 只有 runtime + loader; 悬停预取时提前拉 */
 let morphMod = null;
 const loadMorph = () => morphMod || (morphMod = import("./idiomorph.esm.js").then((m) => m.Idiomorph));
@@ -70,7 +70,7 @@ function mergeHead(doc) {
   document.title = doc.title;
   const head = document.head, fresh = doc.head;
   // per-page metadata is replaced wholesale; the viewport / charset metas and the framework's own bootstrap stay
-  const sel = 'meta[name]:not([name="viewport"]), meta[property], link[rel="canonical"], link[rel="alternate"], script[type="application/ld+json"]';
+  const sel = 'meta[name]:not([name="viewport"]), meta[property], link[rel="canonical"], link[rel="alternate"], script[type="application/ld+json"], script[data-gotsx-stores]';
   head.querySelectorAll(sel).forEach((n) => n.remove());
   fresh.querySelectorAll(sel).forEach((n) => head.appendChild(n.cloneNode(true)));
   // stylesheets the new page needs that this document lacks (old ones stay: no flash of unstyled content)
@@ -197,6 +197,7 @@ async function navigate(url, push = true, restore = null) {
     const doc = new DOMParser().parseFromString(html, "text/html");
     const swap = () => {
       mergeHead(doc);
+      seedStores(doc);   // the new page's store seeds win over what the islands hold (the server is the truth)
       Idiomorph.morph(document.body, doc.body, { morphStyle: "outerHTML", callbacks: { beforeNodeMorphed: keepIslands } });
       reconcile();
     };

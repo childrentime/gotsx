@@ -40,6 +40,8 @@ Rules that are always true:
 - ` + "`gotsx dev`" + ` writes ` + "`.gotsx/dev.json`" + ` (pid, port, url) while it runs and ` + "`.gotsx/diagnostics.json`" + ` when a build fails.
   Do not start a second ` + "`gotsx dev`" + `; read the state file and use the running server.
 - Islands (` + "`.client.tsx`" + `) reach Go only through typed actions (methods listed in ` + "`host.Registry[...].Actions`" + `).
+- State shared by islands lives in a store (` + "`createStore`" + ` in a client module); the page seeds it per request with ` + "`seed(store, value)`" + `.
+  Do not hand-roll a cross-island cache, an event bus for state, or a fetch on mount for data the page already has.
 ` + agentBlockEnd + "\n"
 }
 

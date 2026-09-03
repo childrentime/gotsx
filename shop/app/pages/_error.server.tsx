@@ -8,10 +8,10 @@ export function meta(): Meta {
 
 // pages/_error.server.tsx → gen.ErrorPage: a host method returned an error or a page panicked (the message is only
 // shown to the user in dev; production shows the generic text)
-export default function ErrorPage({ cookies, locale, message }: ErrorProps) {
+export default function ErrorPage({ locale, message }: ErrorProps) {
   const lc = locale !== "" ? locale : "en";
   return (
-    <Layout sid={cookies.sid ?? ""} locale={lc} wide>
+    <Layout locale={lc} wide>
       <div class="card flex flex-col items-center py-24 text-center">
         <span class="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive"><Icon name="alert" className="h-5 w-5" /></span>
         <p class="mt-4 font-medium">{t(lc, "error.server")}</p>

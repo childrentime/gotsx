@@ -366,3 +366,108 @@ export function mount(Comp, props, root, hydrate) {
     root.replaceChildren(...flat(Comp(props)));
   }
 }
+
+/* ---------- Stores: `export const cart = createStore(init)` in a client module ----------
+   Each top-level key is a signal (islands read `cart.count` / `const { count } = cart` as fine-grained bindings).
+   The server seeds a store per page load: seed(store, value) in a page or layout body renders the islands of that
+   request with the value and writes it into <head> as <script type="application/json" data-gotsx-stores>; the
+   store starts from it here, so the hydrated signals match the HTML. After an SPA navigation the loader re-seeds
+   from the new document (the server is the truth, as with back/forward revalidation). */
+const _stores = new Map();   // name → { keys, apply, init }
+let _seedCache = null;
+function _seeds(doc) {
+  const el = (doc || document).querySelector('script[data-gotsx-stores]');
+  if (!el) return {};
+  try { return JSON.parse(el.textContent || "{}") || {}; } catch { return {}; }
+}
+export function store(name, init) {
+  if (!_seedCache) _seedCache = _seeds();
+  const seed = _seedCache[name];
+  const keys = Object.keys(init);
+  const obj = {}, sets = {};
+  for (const k of keys) {
+    const [get, set] = signal(seed && Object.hasOwn(seed, k) ? seed[k] : init[k]);
+    obj[k] = get;
+    sets[k] = set;
+  }
+  const apply = (next) => { for (const k of keys) sets[k](Object.hasOwn(next, k) ? next[k] : init[k]); };
+  /* set(draft => { … }) mutates a copy-on-write draft: only the keys whose value changed notify their subscribers,
+     rows of a keyed list that were not touched keep their identity. set(value) replaces the whole state. */
+  obj.set = (v) => {
+    if (typeof v === "function") {
+      const cur = {};
+      for (const k of keys) cur[k] = untrack(obj[k]);
+      apply(produce(cur, v));
+    } else apply(v);
+  };
+  _stores.set(name, { keys, apply, init });
+  return obj;
+}
+/* seedStores(doc): after an SPA navigation — the seeds of the new document replace the state of the stores it names;
+   stores the page does not seed keep what the user did. Later-loaded store modules see the same seeds. */
+export function seedStores(doc) {
+  const seeds = _seeds(doc);
+  _seedCache = seeds;
+  for (const [name, s] of _stores) if (Object.hasOwn(seeds, name)) s.apply(seeds[name]);
+}
+
+/* produce(base, fn): an Immer-style copy-on-write draft for plain objects and arrays — the dialect has nothing else.
+   Every object on a written path is shallow-copied once; everything untouched keeps its identity, so a signal whose
+   key did not change stays quiet (Object.is) and a keyed list reuses the rows that did not change. */
+const DRAFT = Symbol("gotsx.draft");
+const draftable = (v) => v !== null && typeof v === "object" && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype);
+const isDraft = (v) => v !== null && typeof v === "object" && v[DRAFT] !== undefined;
+function produce(base, fn) {
+  const draft = (target, parent, key) => {
+    const st = { base: target, copy: null, parent, key, drafts: Object.create(null), proxy: null };
+    const cur = () => st.copy || st.base;
+    const changed = () => {
+      if (st.copy) return;
+      st.copy = Array.isArray(st.base) ? st.base.slice() : Object.assign({}, st.base);
+      if (parent) { parent.changed(); parent.copy[key] = st.proxy; }
+    };
+    st.changed = changed;
+    st.proxy = new Proxy(target, {
+      get(_, k) {
+        if (k === DRAFT) return st;
+        const s = cur();
+        if (typeof k === "symbol") return s[k];
+        if (k in st.drafts) return st.drafts[k];
+        const v = s[k];
+        if (draftable(v) && Object.hasOwn(s, k) && Object.is(v, st.base[k])) return (st.drafts[k] = draft(v, st, k));   // untouched child: draft lazily
+        return v;
+      },
+      set(_, k, v) {
+        const s = cur();
+        if (!(k in st.drafts) && Object.hasOwn(s, k) && Object.is(s[k], v)) return true;
+        changed();
+        delete st.drafts[k];
+        st.copy[k] = v;
+        return true;
+      },
+      deleteProperty(_, k) { changed(); delete st.drafts[k]; delete st.copy[k]; return true; },
+      has(_, k) { return k in cur(); },
+      ownKeys() { return Reflect.ownKeys(cur()); },
+      getOwnPropertyDescriptor(_, k) {
+        const d = Reflect.getOwnPropertyDescriptor(cur(), k);
+        if (d && !(Array.isArray(st.base) && k === "length")) d.configurable = true;   // the proxy target is the base: keep the invariants satisfiable
+        return d;
+      },
+    });
+    return st.proxy;
+  };
+  const finalize = (st) => {
+    if (!st.copy) return st.base;                       // never written (a drafted child that was only read)
+    const out = st.copy;
+    for (const k of Object.keys(out)) if (!Object.is(out[k], st.base[k])) out[k] = resolve(out[k]);   // untouched keys keep identity, no walk
+    return out;
+  };
+  const resolve = (v) => {
+    if (isDraft(v)) return finalize(v[DRAFT]);
+    if (draftable(v)) for (const k of Object.keys(v)) { const r = resolve(v[k]); if (!Object.is(r, v[k])) v[k] = r; }   // a new value may hold drafts (s.items = G.sort(s.items, …))
+    return v;
+  };
+  const root = draft(base, null, null);
+  fn(root);
+  return finalize(root[DRAFT]);
+}

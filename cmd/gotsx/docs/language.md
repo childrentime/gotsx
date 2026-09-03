@@ -28,6 +28,7 @@ Category keys: module (imports/exports/files), stmt (statements), expr (expressi
 | module | `import { a, b as c } from "./a"` | yes | named imports |
 | module | `import type { T } from "./a"` | yes | type import; client code may only import type from host:* (except actions) |
 | module | `import { useState, useEffect, useMemo } from "gotsx"` | yes | hooks |
+| module | `import { createStore, seed } from "gotsx"` | yes | stores: state shared by islands, seeded per request by the page (see the hooks rows) |
 | module | `import type { Node, PageProps, LayoutProps, Meta, Flash } from "gotsx"` | yes | framework types |
 | module | `import { x } from "host:name"` | yes | host module in a server component: compiles to a direct Go call |
 | module | `import { toggle } from "host:name" (island) → await toggle(id)` | yes | typed action: a Go method listed in Registry[...].Actions; the call is a same-origin POST typed Promise<T> from the Go signature; errors throw with .status / .fields |
@@ -85,6 +86,10 @@ Category keys: module (imports/exports/files), stmt (statements), expr (expressi
 | hooks | `const [x, setX] = useState(init)` | yes | server = initial value; client = signal |
 | hooks | `const y = x * 2` | yes | a signal-dependent const is automatically a memo, no useMemo needed |
 | hooks | `useMemo(() => ...) / useEffect(() => ...)` | yes | useEffect is client-only, deps tracked automatically |
+| hooks | `export const cart = createStore<T>(init)` | yes | module-level const of a client module (`app/stores/cart.client.tsx`): a store — one signal per field in the browser, the request's seeded value on the server; fields missing from `init` are zero values; state is JSON (no functions, no Node) |
+| hooks | `cart.count / const { count, items } = cart` | yes | reads are signals (fine-grained bindings, memos, effects); client modules only; read-only outside `set` |
+| hooks | `cart.set((s) => { s.items.push(x); s.count += 1; }) / cart.set(value)` | yes | from handlers, effects and plain functions, never during render: `s` is a copy-on-write draft — only the fields that changed notify, untouched rows of a keyed list keep their identity; a whole value replaces the state |
+| hooks | `seed(cart, value)` | yes | in the body of a page or layout's default component, before the JSX: the islands of this request render with `value` and the browser's store starts from it (no flash, no refetch); a page that does not seed leaves the store at its initial value |
 | builtin | `console.log / JSON.stringify / Math.max min floor ceil round abs sqrt random` | yes | on both sides |
 | builtin | `fetch setTimeout document window location history navigator localStorage` | yes | client only, type any |
 | builtin | `Object.keys / Object.values` | yes | keys sorted (matching a Go map, keeping hydration stable) |
@@ -106,4 +111,9 @@ Category keys: module (imports/exports/files), stmt (statements), expr (expressi
 - `useEffect(() => { … }, [deps])` runs in the browser only. `useMemo` is accepted for familiarity; a plain `const` does the same.
 - `{cond && <X/>}` / `{cond ? a : b}` and `{list.map(x => <li key={x.id}>…</li>)}` are the conditional and list forms; give island lists a `key` so rows are reused/moved instead of rebuilt (without `key` the whole list re-renders on change).
 - Event handlers: `onClick`, `onInput`, `onSubmit`, … (camelCase). `class` and `for` are the attribute names (not `className` / `htmlFor`); `style` is a string.
-- Emitting events between islands: `emit("name", payload)` / `on("name", handler)` from `"gotsx"`.
+- **State shared by islands**: a store. `export const cart = createStore<CartView>({ items: [], empty: true })` in a client module;
+  islands read `cart.count` or `const { count, items } = cart` (signals), handlers call `cart.set((s) => { … })` or
+  `cart.set(await add(id))` with an action's result, and the page seeds it once per request with `seed(cart, view(sid))`
+  so the first paint already shows the server's value. Helper functions that read a store run only in the browser
+  (like DOM code): read the store in the component, or pass values into helpers.
+- Commands between islands (open this modal, show that toast): `emit("name", payload)` / `on("name", handler)` from `"gotsx"`. State goes through a store, not through events.

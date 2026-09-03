@@ -14,7 +14,6 @@ export function meta(props: PageProps): Meta {
 
 export default function Home({ cookies, locale, path }: PageProps) {
   const lc = locale !== "" ? locale : "en";
-  const sid = cookies.sid ?? "";
   const deals = flashCards().slice(0, 10);
   const cats = categories();
   const ld = JSON.stringify({
@@ -31,7 +30,7 @@ export default function Home({ cookies, locale, path }: PageProps) {
     ["shield", t(lc, "perk.price.t"), t(lc, "perk.price.d")],
   ];
   return (
-    <Layout sid={sid} locale={lc} active="home" wide path={path}>
+    <Layout locale={lc} active="home" wide path={path}>
       {jsonLd(ld)}
       {/* Hero */}
       <section class="grid gap-4 lg:grid-cols-[1fr_360px]">

@@ -31,7 +31,10 @@ flow (`redirect notFound`), `jsonLd`, `isoDate`, regex literals (RE2 subset), th
 error semantics, the **assignability rules** (arguments, props, typed declarations, declared returns: any/unknown accepted, optional primitive ⊂ primitive, structural objects, `Node` accepts text), **typed actions** (value-importing an `Actions` member from `host:*` in an island, `await`
 typed as `Promise<T>` from the Go signature, `Error.status` / `Error.fields` on failure), **page meta**
 (`export function meta(props?: PageProps): Meta`, `Meta` / `Flash` importable from `"gotsx"`,
-`LayoutProps.meta`) and the `PageProps` fields `session` / `flash` / `csrf`. Adding to the subset is never
+`LayoutProps.meta`), the `PageProps` fields `session` / `flash` / `csrf`, and **stores** (`export const x = createStore<T>(init)`
+at the module level of a client module, field reads as signals — `x.f` / `const { f } = x` — in client code, `x.set(draft => …)`
+/ `x.set(value)` from handlers, effects and plain functions with copy-on-write semantics, `seed(x, value)` in a page or
+layout body; the `<script type="application/json" data-gotsx-stores>` block that carries the seed is internal). Adding to the subset is never
 breaking; removing from it always is.
 
 **Semantic conventions.** Numbers are float64; strings are handled by rune on the server; an absent optional

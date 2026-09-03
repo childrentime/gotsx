@@ -114,7 +114,7 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 |---|---|
 | `compiler/` | `lexer` / `parser` / `check` / `gogen` / `jsgen` / `compile`(+ 给 check/LSP 用的 `Analyze`) |
 | `runtime/` | 节点模型、hydrate 标记、方言内建、HTTP(CSP/CSRF/gzip/缓存/健康检查/优雅关闭)、请求 cookie、`Before` 钩子、宿主类型反射、i18n、redirect/notFound |
-| `client/` | signals、`el/t/text/cond/each`(keyed 复用)、走位 hydrate、岛加载器、SPA 跳转、进度条、预取、跨岛 `emit`/`on`、i18n、dev 自动刷新 |
+| `client/` | signals、`el/t/text/cond/each`(keyed 复用)、走位 hydrate、岛加载器、SPA 跳转、进度条、预取、store(`createStore`、写时复制的 `set`、跳转后重新注入种子)、跨岛 `emit`/`on`、i18n、dev 自动刷新 |
 | `cmd/gotsx/` | `new` / `build` / `dev` / `check` / `lsp` / `tailwind` |
 | `editors/` | VS Code(扩展源码)、Neovim、Helix、Zed 的 LSP 接入 |
 | `design/` | **gotsx UI**: 共享设计系统(shadcn 风格的中性 token + 组件类)—— Tailwind v4 层和一份等价的手写 CSS, 所有 demo 和 `gotsx new` 都用它 |
@@ -124,7 +124,7 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 
 它不是 TypeScript 的实现, 而是**一门借 TSX 语法的静态语言**(AssemblyScript 的表亲): 类型系统限定在 Go 能表示的集合里。每个表达式都能推出一个静态类型且落在允许集合里就能编译; 否则是带 `file:line:col` 的编译错误 —— 构建时、`gotsx check`、或编辑器里实时给出。
 
-- **有**: 函数组件 / props / 解构 + 默认值; `string`(rune)/ `number`(float64)/ `boolean` / 数组 / `Record` / 已知形状的对象 / `interface … extends`; `if` / `for-of` / `for (;;)` / `while` / `switch` / `break` / `continue` / `try`; `++ -- += -= *= /= %=`; `&& || ?? 三元`; `=== !==`; 模板字符串; **正则字面量**(RE2 子集, 编译期校验: `re.test`, `s.match/replace/replaceAll/split/search`); 数组 `map filter find findIndex some every forEach includes indexOf lastIndexOf join slice concat sort reduce reverse flat at` 以及原地修改的 `push pop shift unshift splice`; 字符串方法(含 `padStart/padEnd/trimStart/trimEnd/localeCompare/at`); `Object.keys/values/hasOwn`、`delete m[k]`; `Math.*`; **`Date.now/Date.parse/isoDate`**; `useState/useMemo/useEffect(+[])`; 带 `key` 的 JSX; **`<Suspense fallback>`**(服务端); 模块级 `const`; `host:*`(服务端); `redirect()/notFound()`(服务端页面); `fetch`/DOM/`await`(客户端)。
+- **有**: 函数组件 / props / 解构 + 默认值; `string`(rune)/ `number`(float64)/ `boolean` / 数组 / `Record` / 已知形状的对象 / `interface … extends`; `if` / `for-of` / `for (;;)` / `while` / `switch` / `break` / `continue` / `try`; `++ -- += -= *= /= %=`; `&& || ?? 三元`; `=== !==`; 模板字符串; **正则字面量**(RE2 子集, 编译期校验: `re.test`, `s.match/replace/replaceAll/split/search`); 数组 `map filter find findIndex some every forEach includes indexOf lastIndexOf join slice concat sort reduce reverse flat at` 以及原地修改的 `push pop shift unshift splice`; 字符串方法(含 `padStart/padEnd/trimStart/trimEnd/localeCompare/at`); `Object.keys/values/hasOwn`、`delete m[k]`; `Math.*`; **`Date.now/Date.parse/isoDate`**; `useState/useMemo/useEffect(+[])`; **store**(`createStore` / `seed`, 多个岛共享、由页面注入初值的状态); 带 `key` 的 JSX; **`<Suspense fallback>`**(服务端); 模块级 `const`; `host:*`(服务端); `redirect()/notFound()`(服务端页面); `fetch`/DOM/`await`(客户端)。
 - **没有(是编译错误, 不是静默)**: `class`/`this`/原型/`new`; `any` 上的成员访问; `==`; `do-while`、`for-in`; 自定义泛型; 正则的 lookaround / 反向引用; 给岛传 `children`; 原地修改 `useState` 的数组(用 `setXs([...xs, x])`)。
 - **语义约定**(两端一致): 可选的原始类型用零值表示缺席(`""`/`0`/`false`), 所以 `??` 与 `||` 是同一个运算符; 可选的对象(如 `find()` 没找到)是假值且 `=== undefined`; `Record` 读缺席的键得到零值, `Object.hasOwn` 判断存在; 服务端的对象是值语义。完整清单是 [`STABILITY.md`](STABILITY.md) 的 Stable 层。
 
@@ -139,6 +139,7 @@ Go 侧: 生成的 *_gen.go 与你的 main.go / host 包一起编译成一个二�
 - **文件路由**: `pages/p/[id].server.tsx` → `/p/{id}`, `pages/docs/[...slug].server.tsx` → catch-all; 更具体的路由优先。**嵌套布局**: `pages/**/_layout.server.tsx`(`LayoutProps` = `PageProps` + `meta` + `children`)包住其下的页面; `_404` / `_error` 变成 `gen.NotFound` / `gen.ErrorPage`。`redirect(url, status?)` 与 `notFound()` 中断渲染。
 - **流式 SSR**: `<Suspense fallback={…}>` 随外壳先发 fallback, children 在外壳 flush 之后**于自己的 goroutine 里**渲染; 多个边界并发求值、谁先完成先流入(乱序、可嵌套、错误隔离)。语言里没有 async: 慢的宿主调用就放进边界。
 - **岛 + SPA 跳转**: 页面零 JS; 岛按需加载; 跳转拉 HTML 再 morph(idiomorph), 岛按 DOM 同一性存活, 状态不丢。外壳一到就 morph, `Suspense` 填充继续流入; 前进/后退从快照缓存秒回并恢复滚动位置; 每页的 `<head>` 元数据会合并; 页内锚点交给浏览器; 焦点移到 `<main>`(或 `[data-gotsx-focus]`), 路由播报器把新标题告诉读屏软件; 顶部进度条与悬停预取让它秒开。
+- **Store**: 在 client 模块里写 `export const cart = createStore<CartView>({ items: [], empty: true })`, 就是多个岛共享的状态 —— 每个字段一个 signal(`const { count } = cart`), 事件处理里 `cart.set((s) => { s.items.push(x); })` 或 `cart.set(await add(id))`, 写时复制语义(没动的行保持身份, 没变的字段不通知); 页面或布局函数体里 `seed(cart, view(sid))`, 首屏就是服务端的值, 浏览器从它开始 hydrate —— 不闪、不二次请求、状态不走事件总线。shop 的购物车徽章、购物车页和结算表单共用一个 store。
 - **keyed 列表**: `xs.map((x) => <li key={x.id}>…</li>)` 按 key 复用 / 移动 / 销毁 DOM —— 输入框、焦点、行内 effect 在重排后都保留; 不写 `key` 的列表和以前一样整块重建。
 - **走位 hydrate**: 服务端只标记响应式的文本/条件/列表; 客户端按同一编译器给出的顺序认领节点, 复用现有 DOM, 不 diff。
 - **Cookie / 中间件**: 请求 cookie 进 `PageProps.Cookies`; `Options.Before` 钩子可以种 cookie 或做鉴权; `Options.Middleware` 是标准中间件链。

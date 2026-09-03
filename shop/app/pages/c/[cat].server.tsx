@@ -17,7 +17,7 @@ export default function CategoryPage({ params, query, cookies, locale, path }: P
   const page = listCards(params.cat, "", sort, Number(query.p ?? "1"));
   const label = catLabel(params.cat);
   return (
-    <Layout sid={sid} locale={lc} active={params.cat} wide path={path}>
+    <Layout locale={lc} active={params.cat} wide path={path}>
       <Listing title={label} base={`/c/${params.cat}?`} sort={sort} page={page} wished={wishList(sid)} locale={lc} />
     </Layout>
   );

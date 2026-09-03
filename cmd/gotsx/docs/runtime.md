@@ -48,6 +48,14 @@ use a database. Methods should be fast; there is no per-request caching.
 Regenerate after changing `host/`: `gotsx build` (or `gotsx dev` does it on save) runs `cmd/hostgen`, which
 rewrites `app/.gen/host.d.ts` and `host.json`. The compiler then knows the new signatures.
 
+## Stores (generated, nothing to configure)
+
+`export const cart = createStore<T>(init)` compiles to a `gotsx.NewStore(name, init)` package var in `gen/`; `seed(cart, value)`
+in a page or layout body compiles to `gotsx.Seed(props, store, value)`, which records the value for the current request
+(islands render with it through the render context, Suspense goroutines included) and writes it into `<head>` as
+`<script type="application/json" data-gotsx-stores>` — a data block, no CSP nonce needed, `<` escaped, nil slices as `[]`.
+The Go side never mutates a store, so the vars are safe to share across requests.
+
 ## Request helpers
 
 - `gotsx.Req` (first param of an action): `W`, `R`, `Cookies`, `Locale`, `Session()`, `SetCookie(c)`.
