@@ -137,6 +137,9 @@ Every same-origin link and GET form navigates without a reload: the loader fetch
 moves focus to `[data-gotsx-focus]` (else `<main>`, else `<h1>`) and announces the title to screen readers.
 Opt a link out with `data-no-prefetch` (no hover prefetch) or `target="_self"`-style attributes (`target`,
 `download` → full navigation). Same-page `#anchors` are native. Streaming `<Suspense>` works during navigation too.
+Back/forward first show the page as it was last fetched (island state resets; data changed by an action since then
+appears after the silent revalidation a moment later). Navigation fetches carry an `X-Gotsx-Nav: 1` header the
+runtime does not interpret — middleware and logs can use it to tell navigations from full loads.
 
 ## Styling
 

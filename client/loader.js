@@ -86,14 +86,16 @@ function keepIslands(oldNode, newNode) {
 
 /* Top navigation progress bar */
 const bar = () => document.getElementById("gotsx-bar");
-let barTimer = null;
+let barTimer = null, barOn = false;
 function barStart() {
   const b = bar(); if (!b) return;
+  barOn = true;
   clearTimeout(barTimer); b.style.transition = "none"; b.style.width = "0"; b.style.opacity = "1";
   requestAnimationFrame(() => { b.style.transition = ""; b.style.width = "75%"; });
 }
 function barDone() {
-  const b = bar(); if (!b) return;
+  const b = bar(); if (!b || !barOn) return;
+  barOn = false;
   b.style.width = "100%";
   barTimer = setTimeout(() => { b.style.opacity = "0"; b.style.width = "0"; }, 250);
 }
@@ -160,7 +162,16 @@ function saveScroll() {
   try { history.replaceState(Object.assign({}, history.state || {}, { gotsx: true, scroll: [window.scrollX, window.scrollY] }), ""); } catch { /* ignore */ }
 }
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-const jump = (x, y) => window.scrollTo({ left: x, top: y, behavior: "instant" });   // restoration is never animated, whatever scroll-behavior the page sets
+const jump = (x, y) => window.scrollTo({ left: x, top: y, behavior: "instant" });   // restoration is never animated, whatever scroll-behavior the page sets (older engines animate)
+// with manual restoration the browser no longer restores scroll on reload / full-page back: keep the position in
+// sessionStorage (it survives reloads and same-tab traversals) and re-apply it when the same URL loads again
+const scrollKey = () => "gotsx:scroll:" + location.href;
+addEventListener("pagehide", () => { saveScroll(); try { sessionStorage.setItem(scrollKey(), JSON.stringify([window.scrollX, window.scrollY])); } catch { /* storage off */ } });
+try {
+  const saved = sessionStorage.getItem(scrollKey());
+  if (saved) { sessionStorage.removeItem(scrollKey()); const [x, y] = JSON.parse(saved); if (y || x) jump(x, y); }
+  else if (history.state && history.state.scroll) jump(history.state.scroll[0], history.state.scroll[1]);
+} catch { /* ignore */ }
 remember(stripHash(location.href), "<!DOCTYPE html>" + document.documentElement.outerHTML);
 
 const applyFills = () => document.querySelectorAll("template[data-gotsx-fill]").forEach((t) => window.__gotsxFill && window.__gotsxFill(t.getAttribute("data-gotsx-fill")));
@@ -258,9 +269,14 @@ async function navigate(url, push = true, restore = null) {
             }
           }
           if (shell !== null) {
-            let j;
-            while ((j = buf.indexOf("</template>")) >= 0) {   // each complete Suspense fill is applied as it lands
-              const chunk = buf.slice(0, j + 11); buf = buf.slice(j + 11); html += chunk;
+            // each complete Suspense fill is applied as it lands; the terminator is the server's own
+            // `</template><script…>__gotsxFill(…)</script>`, which escaped page content can never contain
+            for (;;) {
+              const j = buf.indexOf("</template><script");
+              if (j < 0) break;
+              const k = buf.indexOf("</script>", j);
+              if (k < 0) break;
+              const chunk = buf.slice(0, k + 9); buf = buf.slice(k + 9); html += chunk;
               applyChunk(chunk);
             }
           }
@@ -287,7 +303,8 @@ document.addEventListener("click", (e) => {
   const a = e.target.closest && e.target.closest("a[href]");
   if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   if (a.origin !== location.origin || a.target || a.hasAttribute("download")) return;
-  if (a.hash && stripHash(a.href) === stripHash(location.href)) return;   // same-page anchor: native scroll + hashchange
+  const raw = a.getAttribute("href") || "";
+  if (raw === "#" || ((a.hash !== "" || raw.startsWith("#")) && stripHash(a.href) === stripHash(location.href))) { saveScroll(); return; }   // same-page anchor (or a bare "#"): native scroll + hashchange
   e.preventDefault();
   navigate(a.dataset.raw ? a.href : localize(a.href));
 });
