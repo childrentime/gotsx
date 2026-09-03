@@ -771,3 +771,42 @@ func TestNoNilRoundTwo(t *testing.T) {
 		t.Error("plain request is not https")
 	}
 }
+
+func TestSessionDetails(t *testing.T) {
+	// SessionMaxAge reaches the cookie; Referer decides the locale of an action; SetCookie lands before the body
+	i18n := &I18n{Default: "en", Locales: []string{"en", "zh"}, Prefix: true, Messages: map[string]map[string]string{"en": {"hi": "hello"}, "zh": {"hi": "你好"}}}
+	var seenLocale string
+	acts := []HostAction{{Module: "m", Name: "n", Fn: func(req *Req, args []json.RawMessage) (any, error) {
+		seenLocale = req.Locale
+		req.SetCookie(&http.Cookie{Name: "extra", Value: "1", Path: "/"})
+		req.Session().Set("a", "b")
+		return "ok", nil
+	}}}
+	h := Handler(Options{Routes: []Route{homeRoute()}, ClientDir: t.TempDir(), HostActions: acts, SessionSecret: "k", SessionMaxAge: 2 * time.Hour, I18n: i18n})
+	rec := post(h, "/_gotsx/act/m/n", `[]`, map[string]string{"Referer": "http://app.local/zh/cart"})
+	if rec.Code != 200 {
+		t.Fatalf("action: %d %s", rec.Code, rec.Body.String())
+	}
+	if seenLocale != "zh" {
+		t.Errorf("locale from the Referer path: %q", seenLocale)
+	}
+	cookies := rec.Header().Values("Set-Cookie")
+	var sessionCk, extraCk string
+	for _, c := range cookies {
+		if strings.HasPrefix(c, sessionCookie+"=") {
+			sessionCk = c
+		}
+		if strings.HasPrefix(c, "extra=") {
+			extraCk = c
+		}
+	}
+	if !strings.Contains(sessionCk, "Max-Age=7200") {
+		t.Errorf("SessionMaxAge should set Max-Age=7200: %q", sessionCk)
+	}
+	if extraCk == "" {
+		t.Errorf("req.SetCookie must reach the response headers: %v", cookies)
+	}
+	if !strings.Contains(rec.Body.String(), `"data":"ok"`) {
+		t.Errorf("body after cookies: %s", rec.Body.String())
+	}
+}

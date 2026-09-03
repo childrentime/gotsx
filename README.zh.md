@@ -199,6 +199,7 @@ make check       # 对每个示例应用跑 gotsx check
 - `compiler/apps_test.go` —— 编译四个真实应用并 `go build` + `go vet`。
 - `runtime/*_test.go` —— 内建正确性、hydrate 标记、XSS 转义、HTTP 中间件、路由、redirect/notFound、dev 自动刷新、i18n。
 - `cmd/gotsx/cli_test.go` —— 临时模块里 `gotsx new` → `build` → `go build` → `check`。
+- **浏览器套件**(`make test-browser`, CI 的 `browser` job): Playwright 驱动 Chromium 跑 shop(41 项)、admin(33 项)、example 的类型化 action、一个新脚手架(meta、CSRF 表单、flash、action)和 dev 错误浮层 —— 见 [`tests/browser/`](tests/browser)。
 
 ## 安全
 
@@ -208,9 +209,8 @@ make check       # 对每个示例应用跑 gotsx check
 
 - [ ] **独立安全审计**(自查、威胁模型与 `govulncheck` 结果见 [`SECURITY.md`](SECURITY.md))
 - [ ] **1.0**: 冻结 [`STABILITY.md`](STABILITY.md) 的 Stable 层, 把 `Suspense` 与 LSP 从 Experimental 升级
-- [ ] **检查器里的实参可赋值性**: 目前类型不符或多余的调用实参由 Go 编译器报错(带 `.tsx` 行号), `gotsx check` 不报; 移进检查器后编辑器就能提示
 
-已完成: 两个后端、source map、测试套件、Tailwind、会话/中间件、跨岛事件、生产 HTTP 加固、单二进制部署、响应式所有者与清理、岛错误边界、SEO / 图片 / 预取 / 遥测 / PWA、可选 i18n、四个真实应用、可安装模块 + `gotsx new`、语言长尾(循环、switch、原地数组方法、`interface extends`、正则、`Date`)、keyed 列表 diff、redirect / notFound / catch-all 路由、`gotsx check` + LSP(诊断、hover、跳转)+ 编辑器类型声明、增量重建的 dev 自动刷新、跨平台工具链、流式 SSR(`Suspense`)、嵌套布局 / `_404` / `_error`、`Record` 缺席语义、稳定性契约、贯穿所有 demo 的设计系统、GitHub runner 上的基准测试、Cloudflare Workers 目标、**类型化 action**、**签名会话 / flash / CSRF token**、**页面 `meta`**、**dev 错误浮层 + 浏览器错误转发 + 机器可读的 dev 状态**、**`gotsx export`**、**`--db sqlite`**、**`AGENTS.md` + 随版本走的 agent 文档**。
+已完成: 两个后端、source map、测试套件、Tailwind、会话/中间件、跨岛事件、生产 HTTP 加固、单二进制部署、响应式所有者与清理、岛错误边界、SEO / 图片 / 预取 / 遥测 / PWA、可选 i18n、四个真实应用、可安装模块 + `gotsx new`、语言长尾(循环、switch、原地数组方法、`interface extends`、正则、`Date`)、keyed 列表 diff、redirect / notFound / catch-all 路由、`gotsx check` + LSP(诊断、hover、跳转)+ 编辑器类型声明、增量重建的 dev 自动刷新、跨平台工具链、流式 SSR(`Suspense`)、嵌套布局 / `_404` / `_error`、`Record` 缺席语义、稳定性契约、贯穿所有 demo 的设计系统、GitHub runner 上的基准测试、Cloudflare Workers 目标、**类型化 action**、**签名会话 / flash / CSRF token**、**页面 `meta`**、**dev 错误浮层 + 浏览器错误转发 + 机器可读的 dev 状态**、**`gotsx export`**、**`--db sqlite`**、**`AGENTS.md` + 随版本走的 agent 文档**、**实参 / 属性 / 声明 / 返回值的可赋值性检查**。
 
 ## 许可
 

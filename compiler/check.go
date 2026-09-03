@@ -651,6 +651,7 @@ func (c *Checker) checkFuncBody(d *FuncDecl) {
 			c.bindPattern(p.Pat, ft.Params[i].Type, SParam)
 		}
 		fc.want = ft.Ret
+		fc.declared = d.Ret != nil
 	}
 	c.checkBlockStmts(d.Body)
 	if d.Comp {
@@ -745,6 +746,8 @@ func (c *Checker) checkStmt(s Stmt) {
 			fc.rets = append(fc.rets, t)
 			if fc.component && !isNode(t) && t != TUndef && !isAny(t) {
 				c.errf(d.Pos, "a component must return JSX, this returns %s", t)
+			} else if !fc.component && fc.declared && !assignable(t, want) {
+				c.errf(d.Pos, "cannot return %s from a function declared to return %s", t, want)
 			}
 		}
 	case *IfStmt:
@@ -916,6 +919,13 @@ func (c *Checker) checkVarDecl(d *VarDecl) {
 	var t Type = TAny
 	if d.Init != nil {
 		t = c.check(d.Init, declared)
+		if declared != nil && !assignable(t, declared) {
+			name := d.Pat.Name
+			if d.Pat.Kind != PatIdent {
+				name = "the destructured declaration"
+			}
+			c.errf(d.Pos, "cannot assign %s to %s (declared %s)", t, name, declared)
+		}
 	}
 	if declared != nil {
 		t = declared
@@ -1147,9 +1157,9 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 		}
 		return TString
 	case *ArrayLit:
-		var elem Type
+		var elem, wantElem Type
 		if a, ok := unopt(want).(*ArrT); ok && want != nil {
-			elem = a.Elem
+			elem, wantElem = a.Elem, a.Elem
 		}
 		for _, el := range x.Elems {
 			if sp, ok := el.(*SpreadExpr); ok {
@@ -1161,6 +1171,12 @@ func (c *Checker) checkInner(e Expr, want Type) Type {
 				continue
 			}
 			et := c.check(el, elem)
+			switch { // arrays are homogeneous: every element must fit the expected (or first-inferred) element type
+			case wantElem != nil && !assignable(et, wantElem):
+				c.errf(el.GetPos(), "array element: %s is not assignable to %s", et, wantElem)
+			case wantElem == nil && elem != nil && !assignable(et, elem):
+				c.errf(el.GetPos(), "array element: %s is not assignable to %s (arrays are homogeneous; use an object { … } for a mixed row)", et, elem)
+			}
 			if elem == nil {
 				elem = et
 			}
@@ -1428,8 +1444,15 @@ func (c *Checker) checkArgs(x *Call, params []*FnParam) {
 		var want Type
 		if i < len(params) {
 			want = params[i].Type
+		} else {
+			c.errf(a.GetPos(), "too many arguments: %d expected", len(params))
+			c.check(a, nil)
+			continue
 		}
-		c.check(a, want)
+		got := c.check(a, want)
+		if !assignable(got, want) {
+			c.errf(a.GetPos(), "argument %s: %s is not assignable to %s", params[i].Name, got, want)
+		}
 	}
 	if len(x.Args) < len(params) {
 		for _, p := range params[len(x.Args):] {
@@ -2041,7 +2064,9 @@ func (c *Checker) checkJSX(x *JSXElem) Type {
 				}
 				continue
 			}
-			c.check(a.Val, f.Type)
+			if got := c.check(a.Val, f.Type); !assignable(got, f.Type) {
+				c.errf(x.Pos, "prop %s of %s: %s is not assignable to %s", a.Name, x.Tag, got, f.Type)
+			}
 			a.Reactive = c.mod.Kind != "server" && c.isReactive(a.Val)
 		}
 		for _, f := range props.Fields {
@@ -2160,4 +2185,97 @@ func hostParamName(p HostParam, i int) string {
 		return p.Name
 	}
 	return fmt.Sprintf("arg%d", i)
+}
+
+// assignable reports whether a value of type got may be used where want is expected. It is deliberately
+// conservative: any / unknown / nil on either side is accepted (the Go compiler still has the last word), so a
+// false result is always a real mismatch worth a positioned error. Semantics follow the dialect, not TypeScript:
+// an optional primitive is its zero value (so `string | undefined` fits a `string` slot), objects are structural.
+func assignable(got, want Type) bool {
+	if got == nil || want == nil || got == TAny || want == TAny || got == want {
+		return true
+	}
+	if got == TUndef { // absence is the zero value of every type in the dialect (f(1, undefined), [1, undefined], x = undefined)
+		return true
+	}
+	switch w := want.(type) {
+	case *OptT:
+		if g, ok := got.(*OptT); ok {
+			return assignable(g.Elem, w.Elem)
+		}
+		return assignable(got, w.Elem)
+	case *Prim:
+		g := unopt(got)
+		switch w {
+		case TVoid:
+			return true
+		case TNode: // JSX children / Node props accept text and nested lists of nodes
+			if a, ok := g.(*ArrT); ok {
+				return assignable(a.Elem, TNode)
+			}
+			return g == TNode || g == TString || g == TNumber || g == TBool
+		}
+		return g == w
+	case *ArrT:
+		g, ok := unopt(got).(*ArrT)
+		return ok && assignable(g.Elem, w.Elem)
+	case *MapT:
+		switch g := unopt(got).(type) {
+		case *MapT:
+			return assignable(g.Val, w.Val)
+		case *ObjT:
+			return g.Anon // an object literal used as a Record
+		}
+		return false
+	case *ObjT:
+		g, ok := unopt(got).(*ObjT)
+		if !ok {
+			return false
+		}
+		if g == w {
+			return true
+		}
+		for _, f := range w.Fields { // structural: every field the target needs must exist with a compatible type
+			gf := g.Field(f.Name)
+			if gf == nil {
+				if f.Optional {
+					continue
+				}
+				if _, opt := f.Type.(*OptT); opt {
+					continue
+				}
+				return false
+			}
+			if !assignable(gf.Type, f.Type) {
+				return false
+			}
+		}
+		return true
+	case *FnT:
+		g, ok := unopt(got).(*FnT)
+		if !ok {
+			return true // host functions, builtins, setters: not compared
+		}
+		if len(g.Params) > len(w.Params) {
+			return false
+		}
+		for i, p := range g.Params {
+			if !assignable(w.Params[i].Type, p.Type) && !assignable(p.Type, w.Params[i].Type) {
+				return false
+			}
+		}
+		if w.Ret == nil || w.Ret == TVoid || g.Ret == nil {
+			return true
+		}
+		return assignable(g.Ret, w.Ret)
+	case *SetterT:
+		g, ok := got.(*SetterT)
+		return !ok || assignable(g.Elem, w.Elem)
+	case *PromiseT:
+		if g, ok := got.(*PromiseT); ok {
+			return assignable(g.Elem, w.Elem)
+		}
+		return assignable(got, w.Elem)
+	}
+	return true
 }

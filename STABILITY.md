@@ -28,7 +28,7 @@ statements (`const let if for-of for while switch break continue try throw retur
 array/string/number methods listed in the table, `String Number Boolean parseInt parseFloat isNaN
 encodeURIComponent decodeURIComponent`), i18n builtins (`t tv plural fmtNum fmtCur fmtDate lpath`), page control
 flow (`redirect notFound`), `jsonLd`, `isoDate`, regex literals (RE2 subset), the server/client fence and its
-error semantics, **typed actions** (value-importing an `Actions` member from `host:*` in an island, `await`
+error semantics, the **assignability rules** (arguments, props, typed declarations, declared returns: any/unknown accepted, optional primitive ⊂ primitive, structural objects, `Node` accepts text), **typed actions** (value-importing an `Actions` member from `host:*` in an island, `await`
 typed as `Promise<T>` from the Go signature, `Error.status` / `Error.fields` on failure), **page meta**
 (`export function meta(props?: PageProps): Meta`, `Meta` / `Flash` importable from `"gotsx"`,
 `LayoutProps.meta`) and the `PageProps` fields `session` / `flash` / `csrf`. Adding to the subset is never

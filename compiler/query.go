@@ -256,6 +256,9 @@ func (c *Checker) HoverAt(file string, line, col int) *Hover {
 	if m == nil {
 		return nil
 	}
+	saveMod := c.mod // hover text depends on the side (an action is a Promise in an island)
+	c.mod = m
+	defer func() { c.mod = saveMod }()
 	h := nodeAt(m, line, col)
 	if h == nil {
 		return c.importHover(m, file, line, col)
@@ -342,7 +345,7 @@ func (c *Checker) symbolHover(s *Symbol, name string) *Hover {
 		text = code("function " + s.Name + typeSuffix(s.Type))
 	case SHostMember:
 		if s.Host != nil && s.Host.Kind == "method" {
-			text = code("(host method) " + s.Name + hostSig(s.Host))
+			text = code("(host method) " + s.Name + c.hostSig(s.Host))
 		} else {
 			text = code("(host) " + s.Name + ": " + typeStr(s.Type))
 		}
@@ -380,7 +383,8 @@ func typeSuffix(t Type) string {
 	return ": " + typeStr(t)
 }
 
-func hostSig(m *HostMember) string {
+// hostSig: the signature shown on hover; in an island an action is asynchronous (Promise<T>) and its errors are HTTP statuses
+func (c *Checker) hostSig(m *HostMember) string {
 	var ps []string
 	for i, p := range m.Params {
 		ps = append(ps, fmt.Sprintf("%s: %s", hostParamName(p, i), typeStr(p.Type)))
@@ -392,6 +396,10 @@ func hostSig(m *HostMember) string {
 	throws := ""
 	if m.Throws {
 		throws = "   // (T, error): an error becomes a 500 (ErrNotFound → 404)"
+	}
+	if m.Action && c.mod != nil && c.mod.Kind != "server" {
+		ret = "Promise<" + ret + ">"
+		throws = "   // action: POST /_gotsx/act/" + m.Mod + "/" + m.Name + "; errors throw with .status / .fields"
 	}
 	return "(" + strings.Join(ps, ", ") + "): " + ret + throws
 }
@@ -444,12 +452,12 @@ func (c *Checker) memberHover(x *Member) *Hover {
 			return &Hover{Text: code("(field) " + t.String() + "." + x.Name + ": " + typeStr(f.Type)), Def: def}
 		}
 		if m, ok := t.Methods[x.Name]; ok {
-			return &Hover{Text: code("(host method) " + t.String() + "." + x.Name + hostSig(m)), Def: c.hostDef(m, x.Name)}
+			return &Hover{Text: code("(host method) " + t.String() + "." + x.Name + c.hostSig(m)), Def: c.hostDef(m, x.Name)}
 		}
 	case *HostModT:
 		if m, ok := t.Members[x.Name]; ok {
 			if m.Kind == "method" {
-				return &Hover{Text: code("(host method) " + x.Name + hostSig(m)), Def: c.hostDef(m, x.Name)}
+				return &Hover{Text: code("(host method) " + x.Name + c.hostSig(m)), Def: c.hostDef(m, x.Name)}
 			}
 			return &Hover{Text: code("(host) " + x.Name + ": " + typeStr(m.Type)), Def: c.hostDef(m, x.Name)}
 		}

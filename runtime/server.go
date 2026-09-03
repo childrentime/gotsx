@@ -114,8 +114,9 @@ type server struct {
 	manifest   string
 	loader     string
 	logURL     string
-	bootID     string // 每次进程启动不同: dev 模式下浏览器据此判断服务重启过 → 自动刷新
-	autoSecret string // random key used when SessionSecret is empty
+	bootID     string    // 每次进程启动不同: dev 模式下浏览器据此判断服务重启过 → 自动刷新
+	autoSecret string    // random key used when SessionSecret is empty
+	secretWarn sync.Once // warn once when a session is actually issued with that random key
 }
 
 type ctxKey int

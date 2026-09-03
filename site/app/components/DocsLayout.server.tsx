@@ -7,6 +7,7 @@ interface Link { href: string; en: string; zh: string; key: string; }
 const links: Link[] = [
   { href: "/docs", en: "Quick start", zh: "快速开始", key: "docs" },
   { href: "/docs/language", en: "Language reference", zh: "语言参考", key: "language" },
+  { href: "/docs/actions", en: "Actions & sessions", zh: "Action 与会话", key: "actions" },
   { href: "/docs/components", en: "Component library", zh: "组件库", key: "components" },
   { href: "/docs/architecture", en: "Architecture", zh: "架构与原理", key: "architecture" },
 ];

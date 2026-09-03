@@ -248,6 +248,7 @@ type Scope struct {
 type fnCtx struct {
 	component bool
 	async     bool
+	declared  bool // the return type was written down (returns are checked against want)
 	rets      []Type
 	want      Type
 	loops     int // 当前嵌套的循环层数(break/continue 合法性)

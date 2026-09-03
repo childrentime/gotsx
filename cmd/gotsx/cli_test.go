@@ -3,11 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 端到端: gotsx new → gotsx build → go build → gotsx check(含 --json)。慢, -short 跳过。
@@ -263,5 +266,119 @@ func TestExportSafety(t *testing.T) {
 	}
 	if err := printDoc("nope"); err == nil || !strings.Contains(err.Error(), "available") {
 		t.Errorf("unknown doc: %v", err)
+	}
+}
+
+// End to end: gotsx export on a scaffolded app (crawl, --base/--site rewrite, 404.html). Slow, skipped with -short.
+func TestExportEndToEnd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short")
+	}
+	root := t.TempDir()
+	dir := filepath.Join(root, "site-app")
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command("go", append([]string{"run", "."}, args...)...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run("new", dir); err != nil {
+		t.Fatalf("gotsx new: %v\n%s", err, out)
+	}
+	// a second page linked from the first, so the crawler has something to follow
+	os.WriteFile(filepath.Join(dir, "app", "pages", "about.server.tsx"), []byte(`import type { PageProps, Meta } from "gotsx";
+export function meta(): Meta { return { title: "About" }; }
+export default function About(p: PageProps) { return <p>about <a href="/">home</a></p>; }
+`), 0o644)
+	idx := filepath.Join(dir, "app", "pages", "index.server.tsx")
+	src, _ := os.ReadFile(idx)
+	os.WriteFile(idx, []byte(strings.Replace(string(src), `<h1>Todos</h1>`, `<h1>Todos</h1><a href="/about">about</a>`, 1)), 0o644)
+	out := filepath.Join(root, "dist")
+	if o, err := run("export", dir, "--out", out, "--base", "/demo", "--site", "https://example.test", "--port", "4177"); err != nil {
+		t.Fatalf("gotsx export: %v\n%s", err, o)
+	}
+	for _, f := range []string{"index.html", "about/index.html", "404.html", ".nojekyll", "_gotsx/runtime.js", "_gotsx/TodoList.js", "public/app.css"} {
+		if _, err := os.Stat(filepath.Join(out, f)); err != nil {
+			t.Errorf("export is missing %s", f)
+		}
+	}
+	html, _ := os.ReadFile(filepath.Join(out, "index.html"))
+	for _, want := range []string{`href="/demo/about"`, `href="/demo/public/app.css"`, `"base":"/demo"`, `<title>Todos · site-app</title>`} {
+		if !strings.Contains(string(html), want) {
+			t.Errorf("index.html should contain %s", want)
+		}
+	}
+	if strings.Contains(string(html), "127.0.0.1:4177") {
+		t.Error("the local origin must not leak into the export")
+	}
+	about, _ := os.ReadFile(filepath.Join(out, "about", "index.html"))
+	if !strings.Contains(string(about), "<title>About · site-app</title>") {
+		t.Errorf("about page meta: %s", about)
+	}
+	// --out inside the app directory is refused
+	if o, err := run("export", dir, "--out", dir, "--port", "4178"); err == nil || !strings.Contains(o, "refusing") {
+		t.Errorf("exporting into the app directory must be refused: %v\n%s", err, o)
+	}
+}
+
+// gotsx new --db sqlite builds and serves (needs the network for modernc.org/sqlite). Skipped with -short.
+func TestNewSQLite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("-short")
+	}
+	dir := filepath.Join(t.TempDir(), "sql-app")
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command("go", append([]string{"run", "."}, args...)...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run("new", dir, "--db", "sqlite"); err != nil {
+		t.Fatalf("gotsx new --db sqlite: %v\n%s", err, out)
+	}
+	gm, _ := os.ReadFile(filepath.Join(dir, "go.mod"))
+	if !strings.Contains(string(gm), "modernc.org/sqlite") {
+		t.Fatalf("go.mod should require modernc.org/sqlite:\n%s", gm)
+	}
+	if out, err := run("build", dir); err != nil {
+		t.Fatalf("gotsx build: %v\n%s", err, out)
+	}
+	gb := exec.Command("go", "build", "-o", filepath.Join(dir, "app-bin"), ".")
+	gb.Dir = dir
+	if out, err := gb.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	srv := exec.Command(filepath.Join(dir, "app-bin"), "-addr", "127.0.0.1:4179")
+	srv.Dir = dir
+	srv.Env = append(os.Environ(), "DATABASE_PATH="+filepath.Join(dir, "t.db"))
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { srv.Process.Kill(); srv.Wait() }()
+	var body string
+	for i := 0; i < 100; i++ {
+		if r, err := http.Get("http://127.0.0.1:4179/"); err == nil {
+			b, _ := io.ReadAll(r.Body)
+			r.Body.Close()
+			body = string(b)
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !strings.Contains(body, "Read the gotsx README") {
+		t.Fatalf("seeded todos should render: %.300s", body)
+	}
+	req, _ := http.NewRequest("POST", "http://127.0.0.1:4179/_gotsx/act/data/toggle", strings.NewReader(`["1"]`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gotsx-Action", "1")
+	req.Header.Set("Origin", "http://127.0.0.1:4179")
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(r.Body)
+	if r.StatusCode != 200 || !strings.Contains(string(b), `"done":false`) {
+		t.Errorf("toggle through sqlite: %d %s", r.StatusCode, b)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "t.db")); err != nil {
+		t.Error("DATABASE_PATH should be honored")
 	}
 }

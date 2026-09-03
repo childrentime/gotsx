@@ -14,6 +14,9 @@ Semantic conventions that differ from JavaScript/TypeScript:
 - Code that runs on the server (`.server.tsx`, and the server render of an island) may not contain `async`, `await`, `fetch`, DOM access, timers or `Promise`. Inside an island they are allowed in event handlers and effects.
 - Regex literals use the RE2 subset (no lookahead/lookbehind/backreferences). `Date.now()`, `Date.parse()` and `isoDate()` are the date API.
 - Object spread and rest are client-only. Module-level bindings must be `const`.
+- Objects are compared structurally by the checker, but the Go backend still needs the same Go type: passing a host `Model` where an interface `Titled { title: string }` is expected passes `gotsx check` and fails at `go build` (with the `.tsx` line). Declare the parameter with the host type.
+- Arrays are homogeneous: the element type is the annotation or the first element, and every element must fit it (`["a", 1]` is an error — tuples are not in the subset; use an object per row).
+- Types are checked at every call, prop, typed declaration and declared return: `f(1)` for `f(a: string)` is a compile error. `any` disables the check for that value; an optional primitive (`string | undefined`) may be passed where `string` is expected (absence is the zero value); objects are compared structurally.
 
 ## Syntax table
 

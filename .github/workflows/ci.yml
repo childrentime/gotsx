@@ -25,3 +25,20 @@ jobs:
         run: go test ./... -count=1
       - name: Type-check the demo apps (gotsx check)
         run: make check
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Playwright
+        run: pip install playwright && playwright install --with-deps chromium
+      - name: Tailwind
+        run: go run ./cmd/gotsx tailwind
+      - name: Browser suites (demos + scaffold + dev overlay)
+        run: python3 tests/browser/run.py

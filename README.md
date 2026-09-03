@@ -204,6 +204,7 @@ make check       # gotsx check on every demo app
 - `compiler/apps_test.go` — compile all four real apps and `go build` + `go vet`.
 - `runtime/*_test.go` — builtin correctness, hydration markers, XSS escaping, HTTP middleware, routing, redirect/notFound, dev live reload, i18n.
 - `cmd/gotsx/cli_test.go` — `gotsx new` → `build` → `go build` → `check` in a temp module.
+- **Browser suites** (`make test-browser`, CI job `browser`): Playwright drives Chromium through the shop (41 assertions), admin (33), the example's typed action, a fresh `gotsx new` scaffold (meta, CSRF form, flash, actions) and the dev error overlay — see [`tests/browser/`](tests/browser).
 
 ## Security
 
@@ -213,9 +214,8 @@ See [`SECURITY.md`](SECURITY.md). In short: the dialect has no "inject raw HTML"
 
 - [ ] An **independent security audit** (the self-review, threat model and `govulncheck` results are in [`SECURITY.md`](SECURITY.md))
 - [ ] **1.0**: freeze the Stable tier of [`STABILITY.md`](STABILITY.md), promote `Suspense` and the LSP out of Experimental
-- [ ] **Argument assignability in the checker**: a wrong-typed or extra call argument is currently reported by the Go compiler (with the `.tsx` line), not by `gotsx check`; moving it into the checker makes the editor catch it
 
-Done: both backends, source maps, a test suite, Tailwind, sessions/middleware, cross-island events, production HTTP hardening, single-binary deploy, reactive ownership and cleanup, island error boundaries, SEO / images / prefetch / telemetry / PWA, optional i18n, four real apps, installable module + `gotsx new`, the language long tail (loops, switch, in-place array methods, `interface extends`, regex, `Date`), keyed list diffing, redirect / notFound / catch-all routes, `gotsx check` + LSP (diagnostics, hover, definition) + editor typings, dev live reload with incremental rebuilds, Windows-friendly toolchain, streaming SSR with `Suspense`, nested layouts / `_404` / `_error`, `Record` absence semantics, a stability contract, a shared design system across all demos, benchmarks on GitHub runners, a Cloudflare Workers target, **typed actions**, **signed sessions / flash / CSRF tokens**, **page `meta`**, **dev error overlay + browser-error forwarding + machine-readable dev state**, **`gotsx export`**, **`--db sqlite`**, **`AGENTS.md` + version-matched agent docs**.
+Done: both backends, source maps, a test suite, Tailwind, sessions/middleware, cross-island events, production HTTP hardening, single-binary deploy, reactive ownership and cleanup, island error boundaries, SEO / images / prefetch / telemetry / PWA, optional i18n, four real apps, installable module + `gotsx new`, the language long tail (loops, switch, in-place array methods, `interface extends`, regex, `Date`), keyed list diffing, redirect / notFound / catch-all routes, `gotsx check` + LSP (diagnostics, hover, definition) + editor typings, dev live reload with incremental rebuilds, Windows-friendly toolchain, streaming SSR with `Suspense`, nested layouts / `_404` / `_error`, `Record` absence semantics, a stability contract, a shared design system across all demos, benchmarks on GitHub runners, a Cloudflare Workers target, **typed actions**, **signed sessions / flash / CSRF tokens**, **page `meta`**, **dev error overlay + browser-error forwarding + machine-readable dev state**, **`gotsx export`**, **`--db sqlite`**, **`AGENTS.md` + version-matched agent docs**, **assignability checks for arguments, props, declarations and returns**.
 
 ## License
 

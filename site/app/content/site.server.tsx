@@ -278,3 +278,81 @@ export const sampleTailwind = `/* app/tailwind.css */
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 @theme { --color-brand-600: #1557d6; }`;
+
+export const sampleActionErrors = `// host/host.go — errors map to HTTP statuses; the island's catch sees e.status and e.fields
+func (d *DataModule) Rename(req *gotsx.Req, id, title string) (Model, error) {
+	if req.Session().Get("user") == "" {
+		return Model{}, gotsx.Unauthorized("sign in first")                     // 401
+	}
+	if strings.TrimSpace(title) == "" {
+		return Model{}, gotsx.Invalid(map[string]string{"title": "required"}) // 422 + fields
+	}
+	m, err := d.Models.Rename(id, title)                                        // %w gotsx.ErrNotFound → 404
+	if err == nil {
+		req.Session().Flash("ok", "Renamed")                                   // shown by the next page as props.flash
+	}
+	return m, err
+}`;
+
+export const sampleActionCatch = `// app/islands/RenameForm.client.tsx
+import { rename } from "host:data";
+
+const [errors, setErrors] = useState<Record<string, string>>({});
+const submit = async () => {
+  try {
+    const m = await rename(id, title);           // Promise<Model>
+    setErrors({});
+    emit("toast", m.title);
+  } catch (e) {
+    setErrors(e.status === 422 ? e.fields : { _: e.message });
+  }
+};`;
+
+export const sampleForm = `// app/pages/todos.server.tsx — a classic form: no JavaScript involved
+export default function Todos({ flash, csrf }: PageProps) {
+  return (
+    <>
+      {flash.map((f) => <div class={"alert alert-" + f.kind} role="status">{f.text}</div>)}
+      <form method="post" action="/todos">
+        <input type="hidden" name="_csrf" value={csrf} />
+        <input class="input" name="title" aria-label="New todo" />
+        <button class="btn btn-primary">Add</button>
+      </form>
+    </>
+  );
+}`;
+
+export const sampleFormHandler = `// main.go — the handler behind the form (Options.Actions)
+"POST /todos": func(w http.ResponseWriter, r *http.Request) {
+	if !gotsx.VerifyCSRF(r) {
+		http.Error(w, "invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	sess := gotsx.SessionOf(r)
+	if _, err := host.Data.Todos.Add(r.FormValue("title")); err != nil {
+		sess.Flash("error", err.Error())
+	} else {
+		sess.Flash("ok", "Added")
+	}
+	sess.Save(w, r)                                   // before writing the response
+	http.Redirect(w, r, "/todos", http.StatusSeeOther) // POST → redirect → GET
+},`;
+
+export const sampleMeta = `// app/pages/p/[id].server.tsx
+import type { PageProps, Meta } from "gotsx";
+
+export function meta({ params }: PageProps): Meta {
+  const m = models.get(params.id);                 // same 404 semantics as the page
+  return { title: m.title, description: m.desc, image: m.image };
+}
+
+// app/pages/_layout.server.tsx
+export default function Root({ meta, children }: LayoutProps) {
+  return (
+    <html><head>
+      <title>{meta.title ? meta.title + " · Shop" : "Shop"}</title>
+      {meta.description && <meta name="description" content={meta.description} />}
+      {meta.noIndex && <meta name="robots" content="noindex" />}
+    </head><body>{children}</body></html>
+  );
+}`;

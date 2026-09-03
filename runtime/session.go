@@ -119,6 +119,11 @@ func (sess *Session) save(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := json.Marshal(sess.data)
 	payload := base64.RawURLEncoding.EncodeToString(raw)
+	if srv.opt.SessionSecret == "" {
+		srv.secretWarn.Do(func() {
+			log.Printf("gotsx: a session cookie was issued with a per-process random key (Options.SessionSecret is empty): sessions, flash messages and CSRF tokens will not survive a restart or be shared between replicas — set SESSION_SECRET in production")
+		})
+	}
 	if len(payload) > 3800 { // browsers drop cookies over ~4 KB: the session would silently vanish
 		log.Printf("gotsx: session cookie is %d bytes (limit ~4 KB): keep sessions small, store data on the server", len(payload))
 	}

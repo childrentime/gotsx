@@ -20,6 +20,7 @@ gotsx is a full-stack framework that compiles a TSX dialect to native Go. Read `
 make gen        # compile every demo app (gen/ is gitignored — always first)
 make test       # gen + go test ./... (builds all four apps, runs the gotsx new → build → check e2e)
 make test-fast  # compiler / runtime / CLI unit tests
+make test-browser  # tests/browser: Playwright suites for the demos, a fresh scaffold and the dev overlay (CI runs them too)
 make check      # gotsx check on every demo app (what the LSP runs)
 make dev-shop   # dev server with live reload (dev-site / dev-admin / dev-example)
 make lint fmt   # go vet / gofmt
@@ -46,8 +47,9 @@ The CLI embeds `client/*.js` and `cmd/gotsx/docs/*.md` at its own build time —
 - **Generated code is internal**: `gen/`, `runtime` helpers called only by generated code, marker formats and
   `host.json` may change freely; `gotsx.Options`, the CLI, file conventions and the dialect are contracts.
 - **Security defaults stay on** (CSP nonce, CSRF same-origin, escaping everywhere); a demo may not disable them.
-- **Verify in a real browser** when touching the client runtime or a demo: Python Playwright is available
-  (`from playwright.sync_api import sync_playwright`), use `bypass_csp=True` for Playwright's own helpers.
+- **Verify in a real browser** when touching the client runtime or a demo: `make test-browser` runs the suites in
+  `tests/browser/` (Python Playwright, `bypass_csp=True` for Playwright's own helpers); extend them rather than
+  writing throwaway scripts.
 - **The agent docs are part of the language.** `cmd/gotsx/docs/*.md` (written into every app's `app/.gen/docs/`
   and printed by `gotsx docs`) and the managed block in `cmd/gotsx/agent.go` must change in the same commit as
   the syntax, a file convention, a runtime API used from `main.go`, or a compiler error message. Islands talk to

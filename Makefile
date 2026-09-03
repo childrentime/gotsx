@@ -1,7 +1,7 @@
 # gotsx — a TSX dialect that compiles to native Go
 APPS := example site shop admin
 
-.PHONY: help gen build test test-fast check lint fmt tailwind dev-% clean
+.PHONY: help gen build test test-fast test-browser check lint fmt tailwind dev-% clean
 
 help:
 	@echo "gotsx make targets:"
@@ -10,6 +10,7 @@ help:
 	@echo "  make build      gen + go build ./..."
 	@echo "  make test       gen + go test ./...   (gen must run first: gen/ is gitignored)"
 	@echo "  make test-fast  compiler / runtime / cli unit tests only (no app builds)"
+	@echo "  make test-browser  Playwright suites: demos + a fresh scaffold + dev overlay (needs a browser)"
 	@echo "  make check      type-check every demo app (what the editor LSP runs)"
 	@echo "  make lint       go vet"
 	@echo "  make dev-shop   run the shop dev server (dev-example / dev-site / dev-admin likewise)"
@@ -24,6 +25,9 @@ build: gen
 
 test: gen
 	go test ./...
+
+test-browser: ## real-browser suites (Python Playwright): demos + a fresh scaffold
+	python3 tests/browser/run.py
 
 test-fast:
 	go test -short ./compiler/... ./runtime/... ./cmd/...

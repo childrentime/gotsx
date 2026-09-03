@@ -15,6 +15,10 @@ Compile errors are `file:line:col: message`. `gotsx check --json` returns them a
 | `export function meta must have the signature (props: PageProps) => Meta` | wrong meta signature | `export function meta(props: PageProps): Meta` (or no params) |
 | `cannot find module` | wrong relative path, or a server component imported from an island | check the path; islands may only import client modules and types |
 | `missing prop` / `has no prop` | component call does not match its props type | fix the JSX attributes |
+| `argument x: A is not assignable to B` / `too many arguments` | a call does not match the function's signature (an optional primitive is fine where the primitive is expected; objects are structural) | fix the call; convert with `String(n)` / `Number(s)` where needed |
+| `prop x of Comp: A is not assignable to B` | a JSX attribute has the wrong type | fix the attribute value |
+| `cannot assign A to x (declared B)` / `cannot return A from a function declared to return B` | a typed declaration or return does not match | fix the value or the annotation |
+| `array element: A is not assignable to B (arrays are homogeneous …)` | a mixed literal like `["label", 78]` (tuples are not in the subset) | use an object per row: `{ label: "…", pct: 78 }` |
 | `await can only be used in client code` / `… only … server components (*.server.tsx)` | server code uses browser-only constructs, or an island uses `redirect()` / `notFound()` / `Suspense` | move the code to the other side: islands for `await`/DOM, server components for page control flow |
 | `actions return a Promise` … `not during render` | an action called in a component body (render is synchronous) | call it from a handler or effect: `onClick={() => toggle(id)}` (fire-and-forget) or `onClick={async () => { const t = await toggle(id); … }}` |
 | `actions may only take builtin types and host types` (from `gotsx build`) | an action parameter has a type from another package (`time.Time`, …) | take a string / number and convert in Go |

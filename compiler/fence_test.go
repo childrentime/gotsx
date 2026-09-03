@@ -22,6 +22,25 @@ export default function C() { return <b>{models.list().length}</b>; }`, "not an 
 		{"客户端import服务端组件", "c.client.tsx",
 			`import X from "./page.server";
 export default function C() { return <X />; }`, "cannot find module"},
+		{"argument type", "c.server.tsx",
+			`function f(a: string): string { return a; }
+export default function C() { return <b>{f(1)}</b>; }`, "argument a: number is not assignable to string"},
+		{"too many arguments", "c.server.tsx",
+			`function f(a: string): string { return a; }
+export default function C() { return <b>{f("x", 2)}</b>; }`, "too many arguments"},
+		{"prop type", "c.server.tsx",
+			`function Child({ n }: { n: number }) { return <b>{n}</b>; }
+export default function C() { return <Child n="x" />; }`, "prop n of Child: string is not assignable to number"},
+		{"declared variable type", "c.server.tsx",
+			`export default function C() { const n: number = "x"; return <b>{n}</b>; }`, "cannot assign string to n"},
+		{"declared return type", "c.server.tsx",
+			`function f(): number { return "x"; }
+export default function C() { return <b>{f()}</b>; }`, "cannot return string from a function declared to return number"},
+		{"array element type", "c.server.tsx",
+			`function f(xs: number[]): number { return xs.length; }
+export default function C() { return <b>{f(["a"])}</b>; }`, "array element: string is not assignable to number"},
+		{"mixed array literal", "c.server.tsx",
+			`export default function C() { const rows = [["a", 1], ["b", 2]]; return <b>{rows.length}</b>; }`, "arrays are homogeneous"},
 		{"缺少必填prop", "c.server.tsx",
 			`function Child({ n }: { n: number }) { return <b>{n}</b>; }
 export default function C() { return <Child />; }`, "missing prop"},

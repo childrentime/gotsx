@@ -45,7 +45,7 @@ export default function ProductPage({ params, cookies, locale, path }: PageProps
     aggregateRating: { "@type": "AggregateRating", ratingValue: p.rating, reviewCount: p.reviews },
   });
   const perks = [["truck", t(lc, "pperk.ship")], ["undo", t(lc, "pperk.return")], ["shield", t(lc, "pperk.auth")], ["zap", t(lc, "pperk.fast")]];
-  const dist = [[tv(lc, "product.stars", { n: "5" }), 78], [tv(lc, "product.stars", { n: "4" }), 16], [tv(lc, "product.stars", { n: "3" }), 6]];
+  const dist = [{ label: tv(lc, "product.stars", { n: "5" }), pct: 78 }, { label: tv(lc, "product.stars", { n: "4" }), pct: 16 }, { label: tv(lc, "product.stars", { n: "3" }), pct: 6 }];
   const features = [t(lc, "feature.1"), t(lc, "feature.2"), t(lc, "feature.3"), t(lc, "feature.4"), t(lc, "feature.5"), t(lc, "feature.6")];
   return (
     <Layout sid={sid} locale={lc} active={p.category} wide path={path}>
@@ -106,9 +106,9 @@ export default function ProductPage({ params, cookies, locale, path }: PageProps
             <div class="flex-1 space-y-1.5">
               {dist.map((r) => (
                 <div class="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span class="w-12">{r[0]}</span>
-                  <div class="h-1 flex-1 overflow-hidden rounded-full bg-border"><div class="h-full rounded-full bg-foreground" style={`width:${r[1]}%`}></div></div>
-                  <span class="w-8 text-right tabular-nums">{r[1]}%</span>
+                  <span class="w-12">{r.label}</span>
+                  <div class="h-1 flex-1 overflow-hidden rounded-full bg-border"><div class="h-full rounded-full bg-foreground" style={`width:${r.pct}%`}></div></div>
+                  <span class="w-8 text-right tabular-nums">{r.pct}%</span>
                 </div>
               ))}
             </div>

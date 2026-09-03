@@ -263,3 +263,46 @@ var foreignHostJSON = func() []byte {
 	_, j := gotsx.GenerateHost(map[string]gotsx.HostModule{"clock": {Value: Clock{}, Go: "host.Clock", Actions: []string{"At"}}}, "host")
 	return []byte(j)
 }()
+
+// assignability is conservative: the dialect's absence semantics and structural objects must keep compiling
+func TestAssignableAccepts(t *testing.T) {
+	src := `import type { Node } from "gotsx";
+interface P { a: string; b?: number }
+function opt(s: string): string { return s; }
+function takesP(p: P): string { return p.a; }
+function takesRec(r: Record<string, number>): number { return r.x; }
+function takesFn(f: (a: number, b: number) => number): number { return f(1, 2); }
+function takesNode(n: Node): Node { return n; }
+function maybe(x: string | undefined): string { return x ?? ""; }
+export default function C({ items }: { items: { a: string; b?: number }[] }) {
+  const q: string | undefined = items.length > 0 ? items[0].a : undefined;
+  const lit = { a: "x" };
+  const rec: Record<string, number> = { x: 1 };
+  const nodes = [<i/>, "text", 3];
+  const first = items.find((x) => x.a === "a");
+  const both = [first, items[0]];
+  return <b>{opt(q)}{takesP(lit)}{takesP({ a: "y", b: 2 })}{takesRec({ x: 2 })}{takesRec(rec)}{takesFn((a) => a)}{takesNode("text")}{takesNode(<i/>)}{maybe(undefined)}{maybe("s")}{nodes}{both.length}</b>;
+}`
+	if _, err := actionChecker(t, map[string]string{"c.server.tsx": src}); err != nil {
+		t.Fatalf("valid program rejected: %v", err)
+	}
+	// hover on an action in an island shows the Promise signature
+	c, err := actionChecker(t, map[string]string{"/x/app/islands/I.client.tsx": `import { toggle } from "host:todos";
+export default function I() { return <b onClick={() => toggle("1")}>x</b>; }`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line2 := `export default function I() { return <b onClick={() => toggle("1")}>x</b>; }`
+	h := c.HoverAt("/x/app/islands/I.client.tsx", 2, strings.Index(line2, "toggle(")+2)
+	if h == nil || !strings.Contains(h.Text, "toggle(id: string): Promise<Todo>") || !strings.Contains(h.Text, "action") {
+		t.Errorf("island hover on an action: %+v", h)
+	}
+}
+
+// undefined is the zero value everywhere: optional params, array elements, declarations
+func TestUndefinedIsZeroValue(t *testing.T) {
+	if _, err := actionChecker(t, map[string]string{"c.server.tsx": `function f(a: number, b?: number): number { return a + b; }
+export default function C() { const xs = [1, undefined]; const s: string = undefined; return <b>{f(1, undefined)}{xs.length}{s}</b>; }`}); err != nil {
+		t.Errorf("undefined should be accepted as a zero value: %v", err)
+	}
+}

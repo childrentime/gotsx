@@ -1,5 +1,11 @@
 # 更新日志
 
+## 0.7.1 (unreleased)
+
+- **Checker: assignability.** Call arguments (including extra ones), JSX props, typed declarations and returns of functions with a declared type are now checked by `gotsx check` / the LSP with a positioned message (`argument id: number is not assignable to string`, `too many arguments`, `prop n of Child: …`, `cannot assign … (declared …)`, `cannot return …`). The relation follows the dialect, not TypeScript: an optional primitive fits its primitive, objects are structural, `Node` accepts text, callbacks may take fewer parameters; `any` on either side is accepted, so the Go compiler remains the last word. Array literals are checked to be homogeneous (`["a", 1]` used to compile with a silent number→string conversion on the Go side and a number in the browser). Hover on an action inside an island shows its `Promise<T>` signature and endpoint.
+- Tests: `gotsx export` end to end, `gotsx new --db sqlite` end to end, the review regressions (cyclic island props, marshaler passthrough, session-key race, unsafe `--out`, 401/403).
+- `SECURITY.md` covers typed actions, sessions and the dev endpoints; the docs site has a page on actions and sessions.
+
 ## 0.7.0 — Typed actions, sessions, page meta, agent-ready scaffolds, static export
 
 ### Typed actions (islands → Go without hand-written HTTP)
