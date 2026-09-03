@@ -68,4 +68,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add bench/results/
           git commit -m "bench: results from $(lscpu | grep 'Model name' | sed 's/.*: *//') on $(date -u +%Y-%m-%d) [skip ci]" || echo "no changes"
+          git pull --rebase --autostash origin main   # main may have moved during the 15-minute run
           git push
